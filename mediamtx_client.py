@@ -65,7 +65,7 @@ class MediaMTXClient:
     _yaml_path = Path("mediamtx.yml")
     _is_dirty = False
     _last_modified = 0.0
-    _debounce_seconds = 300.0  # Simpan ke file jika sudah tenang selama 5 menit
+    _debounce_seconds = 30.0  # Simpan ke file jika sudah tenang selama 5 menit
 
     def __init__(self):
         base = str(settings.MEDIAMTX_API_URL).rstrip("/")
@@ -83,6 +83,32 @@ class MediaMTXClient:
             MediaMTXClient._cache_loaded = True
         except Exception as e:
             print(f"[Warning] Gagal memuat cache mediamtx.yml: {e}")
+
+    @staticmethod
+    def _sanitize_config_for_mediamtx(config: dict) -> dict:
+        """Membersihkan struktur config agar tidak ada objek bersarang yang invalid untuk tipe data Go/MediaMTX."""
+        # List of fields that are aliased (not strictly bool) in MediaMTX
+        alias_fields = {"rtspEncryption", "rtmpEncryption", "hlsVariant", "authMethod"}
+        cleaned = {}
+
+        for key, value in config.items():
+            if isinstance(value, dict):
+                cleaned[key] = MediaMTXClient._sanitize_config_for_mediamtx(value)
+            elif isinstance(value, bool):
+                if key in alias_fields:
+                    cleaned[key] = "yes" if value else "no"
+                else:
+                    cleaned[key] = value
+            elif isinstance(value, str):
+                if key not in alias_fields and value.lower() == "true":
+                    cleaned[key] = True
+                elif key not in alias_fields and value.lower() == "false":
+                    cleaned[key] = False
+                else:
+                    cleaned[key] = value
+            else:
+                cleaned[key] = value
+        return cleaned
 
     async def _queue_save_to_yaml(self, new_config: dict, path_name: Optional[str] = None):
         """Mencatat perubahan ke RAM terlebih dahulu dan menandai dirty (debounce pattern)."""
@@ -108,7 +134,9 @@ class MediaMTXClient:
         async with self._cache_lock:
             if MediaMTXClient._is_dirty and (time.time() - MediaMTXClient._last_modified >= self._debounce_seconds):
                 try:
-                    self.yaml_path.write_text(yaml.dump(MediaMTXClient._ram_config, sort_keys=False, allow_unicode=True))
+                    safe_config = MediaMTXClient._sanitize_config_for_mediamtx(MediaMTXClient._ram_config)
+
+                    self.yaml_path.write_text(yaml.dump(safe_config, sort_keys=False, allow_unicode=True))
                     MediaMTXClient._is_dirty = False
                     print("[Info] Konfigurasi berhasil disinkronkan ke mediamtx.yml (Debounced).")
                 except Exception as e:
@@ -143,9 +171,15 @@ class MediaMTXClient:
         try:
             cleaned_payload = {}
             for key, value in payload.items():
+                if key == "paths":
+                    cleaned_payload[key] = value
+                    continue
+
                 if isinstance(value, dict):
                     if "enabled" in value:
                         cleaned_payload[key] = bool(value["enabled"])
+                    else:
+                        cleaned_payload[key] = value
                     continue
 
                 if value == "true" or value is True:
@@ -162,14 +196,13 @@ class MediaMTXClient:
             )
             if r.is_error:
                 error_detail = r.text
-                print(f"MediaMTX rejected config: {error_detail}")
                 raise HTTPException(
                     status_code=r.status_code,
                     detail=f"MediaMTX Error: {error_detail}"
                 )
 
             r.raise_for_status()
-            await self._queue_save_to_yaml(payload)
+            await self._queue_save_to_yaml(cleaned_payload)
             return r.json()
         except httpx.HTTPStatusError as exc:
             print(f"HTTP Error from MediaMTX: {exc.response.text}")
@@ -360,10 +393,25 @@ class MediaMTXClient:
         return {"items": normalized}
 
     async def get_streams_summary(self):
-        r = await self.client.get(f"{self.base_url}/paths/list")
-        r.raise_for_status()
-        data = r.json()
-        items = data.get("items", []) or []
+        items = []
+        page = 0
+
+        async def fetching(page):
+            r = await self.client.get(f"{self.base_url}/paths/list",
+                params={"page": page, "itemsPerPage": 100})
+            r.raise_for_status()
+            data = r.json()
+            return data
+
+        while True:
+            datas = await fetching(page)
+            page += 1
+            page_items = datas.get("items", []) if isinstance(datas, dict) else []
+
+            if page_items :
+                items.extend(page_items)
+            else:
+                break;
 
         def safe_int(val):
             if isinstance(val, int): return val
@@ -371,6 +419,7 @@ class MediaMTXClient:
             return 0
 
         online = sum(1 for s in items if s.get("ready"))
+        list_online = [s for s in items if s.get("ready")]
         return {
             "total": len(items),
             "online": online,
@@ -378,6 +427,7 @@ class MediaMTXClient:
             "total_readers": sum(safe_int(s.get("readers")) for s in items),
             "total_bytes_received": sum(s.get("bytesReceived", 0) for s in items),
             "total_bytes_sent": sum(s.get("bytesSent", 0) for s in items),
+            "online_lists": list_online
         }
 
     async def get_stream_detail(self, name):
