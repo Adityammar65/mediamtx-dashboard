@@ -59,9 +59,70 @@
                     </svg>
                     Refresh
                 </button>
+                <div class="relative" id="logs-delete-menu">
+                    <button
+                        id="logs-delete-btn"
+                        class="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                        type="button"
+                    >
+                        <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            ></path>
+                        </svg>
+                        Delete Logs
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <div
+                        id="logs-delete-dropdown"
+                        class="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 hidden z-50"
+                        role="menu"
+                    >
+                        <button
+                            type="button"
+                            class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between"
+                            data-delete-preset="week"
+                            role="menuitem"
+                        >
+                            <span>Last week</span>
+                            <span class="text-xs text-gray-400">(>48h ago)</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between"
+                            data-delete-preset="month"
+                            role="menuitem"
+                        >
+                            <span>Last month</span>
+                            <span class="text-xs text-gray-400">(>48h ago)</span>
+                        </button>
+                        <hr class="my-1 border-gray-200">
+                        <button
+                            type="button"
+                            class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between"
+                            data-delete-preset="custom"
+                            role="menuitem"
+                        >
+                            <span>Custom period</span>
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="overflow-x-auto overflow-y-auto max-h-[70vh]">
+        <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="bg-gray-50">
                     <tr>
@@ -96,6 +157,82 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div id="logs-page-info" class="text-sm text-gray-500">Page 1 of 1</div>
+            <div class="flex items-center gap-2">
+                <button
+                    id="logs-prev-page"
+                    onclick="changeLogsPage(-1)"
+                    class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    Previous
+                </button>
+                <button
+                    id="logs-next-page"
+                    onclick="changeLogsPage(1)"
+                    class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    Next
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Period Modal -->
+    <div id="logs-custom-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+            <div class="relative w-full max-w-md bg-white rounded-lg shadow-xl">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Custom Period Deletion</h3>
+                    <button
+                        id="logs-custom-modal-close"
+                        class="text-gray-400 hover:text-gray-500 transition-colors"
+                        aria-label="Close"
+                    >
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="px-6 py-4 space-y-4">
+                    <p class="text-sm text-gray-600">
+                        Delete log entries within a specific date/time range. Entries from the most recent 48 hours are always protected and cannot be deleted.
+                    </p>
+                    <div>
+                        <label for="logs-custom-start" class="block text-sm font-medium text-gray-700 mb-1">Start Date/Time (inclusive)</label>
+                        <input
+                            type="datetime-local"
+                            id="logs-custom-start"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label for="logs-custom-end" class="block text-sm font-medium text-gray-700 mb-1">End Date/Time (inclusive)</label>
+                        <input
+                            type="datetime-local"
+                            id="logs-custom-end"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                    </div>
+                    <p class="text-xs text-gray-500">Times are in your local timezone. The 48-hour protection window is calculated relative to the current time.</p>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                    <button
+                        id="logs-custom-modal-cancel"
+                        class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        id="logs-custom-modal-confirm"
+                        class="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>

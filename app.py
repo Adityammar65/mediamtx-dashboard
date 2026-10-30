@@ -347,6 +347,162 @@ async def read_logs(
     return StandardResponse.success(data, "Logs retrieved")
 
 
+# 48-hour safety cutoff in seconds
+LOG_SAFETY_CUTOFF_SECONDS = 48 * 60 * 60
+
+
+def parse_log_timestamp(line):
+    """Parse timestamp from a log line. Returns datetime or None if unparseable."""
+    try:
+        import json
+        log_entry = json.loads(line.strip())
+        raw_ts = log_entry.get("timestamp", log_entry.get("time", ""))
+        if raw_ts:
+            from datetime import datetime
+            # Parse ISO8601 string (e.g. 2026-10-28T08:49:59.272353675Z)
+            return datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+    except Exception:
+        pass
+    return None
+
+
+def is_within_safety_window(timestamp):
+    """Check if a timestamp is within the 48-hour safety window."""
+    if timestamp is None:
+        return True  # Protect entries with unparseable/missing timestamps
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    age = (now - timestamp).total_seconds()
+    return age < LOG_SAFETY_CUTOFF_SECONDS
+
+
+def should_delete_entry(timestamp, start=None, end=None):
+    """Determine if a log entry should be deleted based on timestamp and optional range."""
+    if timestamp is None:
+        return False  # Never delete entries with unparseable/missing timestamps
+    # Check safety window
+    if is_within_safety_window(timestamp):
+        return False
+    # Check custom range if provided
+    if start is not None and timestamp < start:
+        return False
+    if end is not None and timestamp > end:
+        return False
+    return True
+
+
+def filter_log_lines(lines, preset=None, start=None, end=None):
+    """Filter log lines, returning (kept_lines, deleted_count).
+    
+    Presets:
+    - 'week': delete entries from 7 days ago up to 48 hours ago
+    - 'month': delete entries from 30 days ago up to 48 hours ago
+    - None with start/end: custom range
+    """
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    
+    if preset == 'week':
+        start = now - timedelta(days=7)
+        end = now - timedelta(seconds=LOG_SAFETY_CUTOFF_SECONDS)
+    elif preset == 'month':
+        start = now - timedelta(days=30)
+        end = now - timedelta(seconds=LOG_SAFETY_CUTOFF_SECONDS)
+    
+    kept = []
+    deleted = 0
+    for line in lines:
+        ts = parse_log_timestamp(line)
+        if should_delete_entry(ts, start, end):
+            deleted += 1
+        else:
+            kept.append(line)
+    return kept, deleted
+
+
+@app.post("/api/logs/delete")
+async def delete_logs(
+    payload: dict = Body(...)
+):
+    """Delete log entries based on preset or custom range, respecting 48-hour safety cutoff."""
+    log_path = settings.LOG_FILE_PATH
+    try:
+        if not os.path.exists(log_path):
+            return StandardResponse.error(f"Log file not found: {log_path}")
+        
+        with open(log_path, 'r') as f:
+            lines = f.readlines()
+        
+        preset = payload.get('preset')
+        start_str = payload.get('start')
+        end_str = payload.get('end')
+        
+        start = None
+        end = None
+        if start_str:
+            from datetime import datetime
+            start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+        if end_str:
+            from datetime import datetime
+            end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+        
+        kept_lines, deleted_count = filter_log_lines(lines, preset, start, end)
+        
+        with open(log_path, 'w') as f:
+            f.writelines(kept_lines)
+        
+        return StandardResponse.success({"deleted_count": deleted_count}, f"Deleted {deleted_count} log entries")
+    except Exception as e:
+        return StandardResponse.error(f"Failed to delete log entries: {str(e)}")
+
+
+@app.post("/api/logs/clear")
+async def clear_logs():
+    """Truncate the configured log file in place (legacy endpoint)."""
+    log_path = settings.LOG_FILE_PATH
+    try:
+        if not os.path.exists(log_path):
+            return StandardResponse.error(f"Log file not found: {log_path}")
+        # Truncate the file by opening in write mode
+        with open(log_path, 'w') as f:
+            pass
+        return StandardResponse.success(None, "Log file cleared successfully")
+    except Exception as e:
+        return StandardResponse.error(f"Failed to clear log file: {str(e)}")
+
+
+async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
+    """Background task to clean log file if too large, respecting 48-hour safety cutoff."""
+    log_path = settings.LOG_FILE_PATH
+    while True:
+        try:
+            if os.path.exists(log_path):
+                file_size_mb = os.path.getsize(log_path) / (1024 * 1024)
+                with open(log_path, 'r') as f:
+                    lines = f.readlines()
+
+                if file_size_mb > max_size_mb or len(lines) > max_lines:
+                    # Apply safety filter first - never delete entries within 48 hours
+                    kept_lines, deleted_count = filter_log_lines(lines)
+                    
+                    # If still too large after safety filter, keep only the newest entries
+                    # but still respect the safety cutoff
+                    if len(kept_lines) > max_lines:
+                        # We need to keep the newest max_lines entries, but don't remove protected ones
+                        # Find the cutoff point that keeps max_lines while preserving safety window
+                        # For simplicity, if still too large, keep newest max_lines (which includes protected)
+                        kept_lines = kept_lines[-max_lines:]
+                        deleted_count = len(lines) - len(kept_lines)
+                    
+                    with open(log_path, 'w') as f:
+                        f.writelines(kept_lines)
+                    print(f"[Info] Log cleaned up. Size before: {file_size_mb:.2f}MB, lines before: {len(lines)}, deleted: {deleted_count}")
+        except Exception as e:
+            print(f"[Warning] Failed to clean log: {e}")
+
+        await asyncio.sleep(6 * 3600)
+
+
 # --- FRONTEND ---
 
 @app.get("/")

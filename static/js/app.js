@@ -569,9 +569,27 @@ function bindPageEvents(page) {
         });
     }
     if (page === 'runtime-logs') {
-        document.getElementById('logs-search')?.addEventListener('input', () => renderLogs(allLogs));
-        document.getElementById('logs-level-filter')?.addEventListener('change', () => renderLogs(allLogs));
+        document.getElementById('logs-search')?.addEventListener('input', () => {
+            logsCurrentPage = 1;
+            renderLogs(allLogs);
+        });
+        document.getElementById('logs-level-filter')?.addEventListener('change', () => {
+            logsCurrentPage = 1;
+            renderLogs(allLogs);
+        });
         document.getElementById('logs-refresh')?.addEventListener('click', loadRuntimeLogs);
+        document.getElementById('logs-delete-btn')?.addEventListener('click', openDeleteDropdown);
+        document.querySelectorAll('#logs-delete-dropdown [data-delete-preset]')?.forEach(btn => {
+            btn.addEventListener('click', () => handleDeletePreset(btn.dataset.deletePreset));
+        });
+        document.getElementById('logs-custom-modal-close')?.addEventListener('click', closeCustomPeriodModal);
+        document.getElementById('logs-custom-modal-cancel')?.addEventListener('click', closeCustomPeriodModal);
+        document.getElementById('logs-custom-modal-confirm')?.addEventListener('click', confirmCustomPeriodDelete);
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('logs-delete-menu');
+            if (menu && !menu.contains(e.target)) closeDeleteDropdown();
+        });
     }
     if (page === 'config-paths') {
         document.getElementById('config-paths-add-btn')?.addEventListener('click', () => openConfigPathModal());
@@ -2942,12 +2960,15 @@ async function loadRuntimeRTMP() {
 // --- Runtime Logs ---
 
 let allLogs = [];
+let logsCurrentPage = 1;
+const LOGS_PER_PAGE = 10;
 
 async function loadRuntimeLogs() {
     try {
         const res = await fetchAPI('/logs?lines=500');
         if (res.success) {
             allLogs = res.data.lines || [];
+            logsCurrentPage = 1;
             renderLogs(allLogs);
         }
         setConnectionStatus(true);
@@ -2971,12 +2992,22 @@ function renderLogs(logs) {
         return matchesSearch && matchesLevel;
     });
 
-    if (filtered.length === 0) {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / LOGS_PER_PAGE));
+    if (logsCurrentPage > totalPages) {
+        logsCurrentPage = totalPages;
+    }
+
+    const startIdx = (logsCurrentPage - 1) * LOGS_PER_PAGE;
+    const endIdx = startIdx + LOGS_PER_PAGE;
+    const pageLogs = filtered.slice(startIdx, endIdx);
+
+    if (pageLogs.length === 0) {
         tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-12 text-center text-gray-500">No log entries found</td></tr>';
+        updatePaginationControls(0, 0);
         return;
     }
 
-    tbody.innerHTML = filtered.map(log => {
+    tbody.innerHTML = pageLogs.map(log => {
         const level = (log.level || '').toUpperCase();
         let levelClass = 'text-gray-600';
         if (level === 'ERR') levelClass = 'text-red-600';
@@ -2992,6 +3023,129 @@ function renderLogs(logs) {
             </tr>
         `;
     }).join('');
+
+    updatePaginationControls(filtered.length, totalPages);
+}
+
+function updatePaginationControls(totalFiltered, totalPages) {
+    const prevBtn = document.getElementById('logs-prev-page');
+    const nextBtn = document.getElementById('logs-next-page');
+    const pageInfo = document.getElementById('logs-page-info');
+
+    if (!prevBtn || !nextBtn || !pageInfo) return;
+
+    prevBtn.disabled = logsCurrentPage <= 1;
+    nextBtn.disabled = logsCurrentPage >= totalPages;
+    pageInfo.textContent = totalFiltered === 0 ? 'Page 0 of 0' : `Page ${logsCurrentPage} of ${totalPages}`;
+}
+
+function changeLogsPage(delta) {
+    const searchTerm = document.getElementById('logs-search')?.value.toLowerCase() || '';
+    const levelFilter = document.getElementById('logs-level-filter')?.value || '';
+
+    const filtered = allLogs.filter(log => {
+        const message = (log.message || '').toLowerCase();
+        const level = (log.level || '').toUpperCase();
+        const matchesSearch = !searchTerm || message.includes(searchTerm);
+        const matchesLevel = !levelFilter || level === levelFilter;
+        return matchesSearch && matchesLevel;
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / LOGS_PER_PAGE));
+    const newPage = Math.max(1, Math.min(totalPages, logsCurrentPage + delta));
+
+    if (newPage !== logsCurrentPage) {
+        logsCurrentPage = newPage;
+        renderLogs(allLogs);
+    }
+}
+
+let logsDeleteMode = null; // 'week', 'month', or 'custom'
+let logsCustomStart = null;
+let logsCustomEnd = null;
+
+async function deleteLogs(params) {
+    try {
+        const res = await fetchAPI('/logs/delete', { method: 'POST', body: JSON.stringify(params) });
+        if (res.success) {
+            logsCurrentPage = 1;
+            await loadRuntimeLogs();
+            alert(`Successfully deleted ${res.data.deleted_count} log entr${res.data.deleted_count === 1 ? 'y' : 'ies'}.`);
+        } else {
+            alert('Failed to delete logs: ' + (res.message || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Failed to delete logs: ' + e.message);
+    }
+}
+
+function openDeleteDropdown() {
+    const dropdown = document.getElementById('logs-delete-dropdown');
+    dropdown.classList.toggle('hidden');
+}
+
+function closeDeleteDropdown() {
+    const dropdown = document.getElementById('logs-delete-dropdown');
+    dropdown.classList.add('hidden');
+}
+
+function handleDeletePreset(preset) {
+    closeDeleteDropdown();
+    if (preset === 'custom') {
+        openCustomPeriodModal();
+    } else {
+        const confirmMsg = preset === 'week'
+            ? 'Delete all log entries from the last week (excluding the most recent 48 hours)?'
+            : 'Delete all log entries from the last month (excluding the most recent 48 hours)?';
+        if (confirm(confirmMsg + ' This action cannot be undone.')) {
+            deleteLogs({ preset });
+        }
+    }
+}
+
+function openCustomPeriodModal() {
+    const modal = document.getElementById('logs-custom-modal');
+    modal.classList.remove('hidden');
+    // Set default end time to 48 hours ago (the cutoff)
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const endInput = document.getElementById('logs-custom-end');
+    endInput.value = formatDatetimeLocal(cutoff);
+    // Set default start time to 7 days before cutoff
+    const startDefault = new Date(cutoff.getTime() - 7 * 24 * 60 * 60 * 1000);
+    document.getElementById('logs-custom-start').value = formatDatetimeLocal(startDefault);
+}
+
+function closeCustomPeriodModal() {
+    const modal = document.getElementById('logs-custom-modal');
+    modal.classList.add('hidden');
+}
+
+function formatDatetimeLocal(date) {
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function confirmCustomPeriodDelete() {
+    const startStr = document.getElementById('logs-custom-start').value;
+    const endStr = document.getElementById('logs-custom-end').value;
+    if (!startStr || !endStr) {
+        alert('Please select both start and end date/time.');
+        return;
+    }
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    if (start > end) {
+        alert('Start date/time must be before or equal to end date/time.');
+        return;
+    }
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    if (end > cutoff) {
+        if (!confirm(`The selected end time is within the 48-hour protection window. Only entries older than 48 hours will be deleted. Continue?`)) {
+            return;
+        }
+    }
+    closeCustomPeriodModal();
+    deleteLogs({ start: start.toISOString(), end: end.toISOString() });
 }
 
 // Fragment-specific controls are registered by bindPageEvents() after loading.
