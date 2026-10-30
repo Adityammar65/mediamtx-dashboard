@@ -1,15 +1,36 @@
 <div id="page-config-defaults" class="page">
-    <div class="mb-6">
-        <p class="text-gray-600 mt-1">Default settings applied to new paths</p>
+    <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">Path Defaults</h2>
+            <p class="mt-1 text-sm text-gray-600">
+                Default path configuration (PathConf). Changes apply to paths that do not have an override.
+            </p>
+        </div>
+        <a
+            href="https://mediamtx.org/docs/features/basic-usage"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
+        >
+            Basic usage guide
+            <span aria-hidden="true">↗</span>
+        </a>
     </div>
 
     <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Changes are applied to the MediaMTX runtime through the Control API. They
-        are not written to <code class="font-mono">mediamtx.yml</code> and will
-        be lost when MediaMTX restarts.
+        These defaults are applied to every path unless that path has its own override.
+        Changes are sent to the MediaMTX runtime through the Control API; they are not
+        written to <code class="font-mono">mediamtx.yml</code> and will be lost when
+        MediaMTX restarts.
     </div>
 
     <form id="config-defaults-form" class="space-y-6">
+        <nav
+            id="config-defaults-nav"
+            aria-label="Path Defaults sections"
+            class="flex flex-wrap gap-2"
+        ></nav>
+
         <div id="config-defaults-fields" class="space-y-6">
             <div class="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">
                 Loading Path Defaults...

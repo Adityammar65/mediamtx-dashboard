@@ -531,8 +531,39 @@ function bindPageEvents(page) {
             saveConfigDefaults();
         });
         document.getElementById('config-defaults-reset')?.addEventListener('click', resetConfigDefaults);
+        document.getElementById('config-defaults-nav')?.addEventListener('click', (event) => {
+            const button = event.target.closest?.('[data-section-target]');
+            if (!button) return;
+            document.getElementById(button.dataset.sectionTarget)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+        });
+        document.getElementById('config-defaults-form')?.addEventListener('click', (event) => {
+            const addButton = event.target.closest?.('[data-array-add]');
+            if (addButton) {
+                addPathDefaultsArrayItem(addButton.dataset.arrayAdd);
+                return;
+            }
+
+            const removeButton = event.target.closest?.('[data-array-remove]');
+            if (removeButton) {
+                const item = removeButton.closest('[data-array-item]');
+                const itemsContainer = item?.parentElement;
+                item?.remove();
+                itemsContainer?.querySelectorAll('[data-array-item]').forEach((arrayItem, index) => {
+                    arrayItem.querySelector('[data-array-item-label]').textContent = `Item ${index + 1}`;
+                });
+                document.getElementById('config-defaults-form').dataset.dirty = 'true';
+            }
+        });
         document.getElementById('config-defaults-form')?.addEventListener('input', (event) => {
-            if (event.target.matches('[data-config-key]')) {
+            if (event.target.matches('[data-config-key], [data-array-field], [data-array-value]')) {
+                event.currentTarget.dataset.dirty = 'true';
+            }
+        });
+        document.getElementById('config-defaults-form')?.addEventListener('change', (event) => {
+            if (event.target.matches('[data-array-field], [data-array-value]')) {
                 event.currentTarget.dataset.dirty = 'true';
             }
         });
@@ -2147,26 +2178,240 @@ async function loadConfigDefaults() {
     }
 }
 
+const PATH_DEFAULTS_SECTIONS = [
+    {
+        title: 'General',
+        description: 'Choose where each path gets its stream from and control on-demand pulling and reader limits.',
+        keys: [
+            'name', 'source', 'sourceFingerprint', 'sourceOnDemand',
+            'sourceOnDemandStartTimeout', 'sourceOnDemandCloseAfter', 'sourceRedirect',
+            'maxReaders', 'useAbsoluteTimestamp',
+        ],
+    },
+    {
+        title: 'Always available',
+        description: 'Keep a path available by playing an offline segment when its stream is unavailable.',
+        keys: ['alwaysAvailable', 'alwaysAvailableFile', 'alwaysAvailableRecorded', 'alwaysAvailableTracks'],
+    },
+    {
+        title: 'Record',
+        description: 'Control whether streams are recorded, their file format, segment timing, and storage path.',
+        keys: [
+            'record', 'recordDeleteAfter', 'recordFormat', 'recordMaxPartSize',
+            'recordPartDuration', 'recordPath', 'recordSegmentDuration',
+        ],
+    },
+    {
+        title: 'Publisher source',
+        description: 'Configure publisher replacement and credentials for streams published to a path.',
+        keys: ['overridePublisher', 'rtspDemuxMpegts', 'srtPublishPassphrase', 'srtReadPassphrase'],
+    },
+    {
+        title: 'RTSP source',
+        description: 'Configure transport, range, scaling, and UDP ports when pulling a stream over RTSP.',
+        keys: [
+            'rtspTransport', 'rtspAnyPort', 'rtspRangeType', 'rtspRangeStart',
+            'rtspScale', 'rtspUDPSourcePortRange',
+        ],
+    },
+    {
+        title: 'RTP source',
+        description: 'Provide the session description for an RTP source.',
+        keys: ['rtpSDP'],
+    },
+    {
+        title: 'MoQ source',
+        description: 'Select the transport used by a Media over QUIC (MoQ) source.',
+        keys: ['moqTransport'],
+    },
+    {
+        title: 'WHEP source',
+        description: 'Configure authorization and gathering timeouts for a WHEP source.',
+        keys: [
+            'whepBearerToken', 'whepHandshakeTimeout', 'whepSTUNGatherTimeout',
+            'whepTrackGatherTimeout',
+        ],
+    },
+    {
+        title: 'Raspberry Pi Camera',
+        description: 'Configure camera identity, image processing, exposure, focus, and encoder options.',
+        keys: [
+            'rpiCameraCamID', 'rpiCameraSecondary', 'rpiCameraWidth', 'rpiCameraHeight',
+            'rpiCameraHFlip', 'rpiCameraVFlip', 'rpiCameraBrightness', 'rpiCameraContrast',
+            'rpiCameraSaturation', 'rpiCameraSharpness', 'rpiCameraExposure', 'rpiCameraAWB',
+            'rpiCameraAWBGains', 'rpiCameraDenoise', 'rpiCameraShutter', 'rpiCameraMetering',
+            'rpiCameraGain', 'rpiCameraEV', 'rpiCameraROI', 'rpiCameraHDR',
+            'rpiCameraTuningFile', 'rpiCameraMode', 'rpiCameraFPS', 'rpiCameraAfMode',
+            'rpiCameraAfRange', 'rpiCameraAfSpeed', 'rpiCameraLensPosition',
+            'rpiCameraAfWindow', 'rpiCameraFlickerPeriod', 'rpiCameraTextOverlayEnable',
+            'rpiCameraTextOverlay', 'rpiCameraCodec', 'rpiCameraIDRPeriod',
+            'rpiCameraBitrate', 'rpiCameraH264Profile', 'rpiCameraH264Level',
+            'rpiCameraMJPEGQuality',
+        ],
+    },
+    {
+        title: 'Forward',
+        description: 'Forward the stream to other destinations, optionally including protocol credentials.',
+        keys: ['forward'],
+    },
+    {
+        title: 'Hooks',
+        description: 'Run commands when a path, stream, reader, or recording segment changes state.',
+        keys: [
+            'runOnInit', 'runOnInitRestart', 'runOnDemand', 'runOnDemandRestart',
+            'runOnDemandStartTimeout', 'runOnDemandCloseAfter', 'runOnUnDemand',
+            'runOnAvailable', 'runOnAvailableRestart', 'runOnUnavailable', 'runOnOnline',
+            'runOnOnlineRestart', 'runOnOffline', 'runOnRead', 'runOnReadRestart',
+            'runOnUnread', 'runOnRecordSegmentCreate', 'runOnRecordSegmentComplete',
+        ],
+    },
+];
+
+const PATH_DEFAULTS_FIELD_DESCRIPTIONS = {
+    name: 'Path name used by MediaMTX. Path defaults are shared by paths unless a path-specific setting overrides them.',
+    source: 'Stream source. Use publisher for incoming streams, a source URL to pull a stream, or a supported source type such as rpiCamera.',
+    sourceFingerprint: 'SHA-256 certificate fingerprint used to verify a source with a self-signed or otherwise invalid TLS certificate.',
+    sourceOnDemand: 'When enabled for a URL source, pull the stream only while at least one reader is connected.',
+    sourceOnDemandStartTimeout: 'Maximum time readers wait for an on-demand source to become ready.',
+    sourceOnDemandCloseAfter: 'How long to wait after the last reader disconnects before closing an on-demand source.',
+    sourceRedirect: 'Path or absolute RTSP URL to which readers are redirected when the source is redirect.',
+    maxReaders: 'Maximum number of simultaneous readers. Zero means no limit.',
+    useAbsoluteTimestamp: 'Use the source frames’ absolute timestamps instead of replacing them with the current time.',
+    alwaysAvailable: 'Play an offline segment on repeat while the stream is unavailable.',
+    alwaysAvailableFile: 'Optional MP4 file to use instead of the generated offline segment.',
+    alwaysAvailableRecorded: 'Record the always-available segment.',
+    alwaysAvailableTracks: 'Track definitions for the always-available segment. Enter a JSON array; audio codecs can require sampleRate, channelCount, and muLaw.',
+    record: 'Record streams published to or pulled by this path.',
+    recordDeleteAfter: 'Automatically delete recordings after this duration. Use 0s to disable automatic deletion.',
+    recordFormat: 'Recording container format. MediaMTX supports fmp4 and mpegts.',
+    recordMaxPartSize: 'Maximum size of an in-progress recording part, to limit memory use.',
+    recordPartDuration: 'Duration of each recording part. A shorter value limits the amount of data lost after a failure.',
+    recordPath: 'Recording filename pattern. MediaMTX supports placeholders such as %path, %Y, %m, %d, and %H.',
+    recordSegmentDuration: 'Minimum duration of each recording segment.',
+    overridePublisher: 'Allow a new publisher to disconnect and replace the current publisher.',
+    rtspDemuxMpegts: 'Demultiplex MPEG-TS packets carried inside an RTSP stream.',
+    srtPublishPassphrase: 'Passphrase required to publish to this path over SRT.',
+    srtReadPassphrase: 'Passphrase required to read this path over SRT.',
+    rtspTransport: 'Transport used to pull the RTSP source: automatic, UDP, multicast, or TCP.',
+    rtspAnyPort: 'Accept RTSP sources with missing or random server ports. Enable only when required by the source.',
+    rtspRangeType: 'RTSP range type used to request a starting position, such as npt, clock, or smpte.',
+    rtspRangeStart: 'Position within the source at which RTSP playback should start.',
+    rtspScale: 'Playback scale requested from the RTSP source.',
+    rtspUDPSourcePortRange: 'Inclusive source-port range used for outgoing RTSP UDP packets. Enter a JSON array, for example [10000, 65535].',
+    rtpSDP: 'Session Description Protocol (SDP) describing the RTP stream.',
+    moqTransport: 'Transport protocol used by the MoQ source.',
+    whepBearerToken: 'Bearer token sent when connecting to the WHEP source.',
+    whepHandshakeTimeout: 'Maximum time allowed for the WHEP handshake.',
+    whepSTUNGatherTimeout: 'Maximum time allowed to gather STUN candidates for WHEP.',
+    whepTrackGatherTimeout: 'Maximum time allowed to gather WHEP tracks.',
+    forward: 'JSON array of forwarding destinations. Each entry can include dest, destFingerprint, moqTransport, and whipBearerToken.',
+    rpiCameraCamID: 'ID of the Raspberry Pi camera.',
+    rpiCameraSecondary: 'Use the camera secondary stream.',
+    rpiCameraWidth: 'Camera frame width in pixels.',
+    rpiCameraHeight: 'Camera frame height in pixels.',
+    rpiCameraHFlip: 'Flip camera frames horizontally.',
+    rpiCameraVFlip: 'Flip camera frames vertically.',
+    rpiCameraBrightness: 'Image brightness, in the range -1 to 1.',
+    rpiCameraContrast: 'Image contrast, in the range 0 to 16.',
+    rpiCameraSaturation: 'Image saturation, in the range 0 to 16.',
+    rpiCameraSharpness: 'Image sharpness, in the range 0 to 16.',
+    rpiCameraExposure: 'Camera exposure mode, such as normal, short, long, or custom.',
+    rpiCameraAWB: 'Automatic white-balance mode.',
+    rpiCameraAWBGains: 'Fixed red and blue white-balance gains. Enter a JSON array such as [1, 1].',
+    rpiCameraDenoise: 'Camera denoise mode.',
+    rpiCameraShutter: 'Fixed shutter speed in microseconds.',
+    rpiCameraMetering: 'Exposure and gain metering mode.',
+    rpiCameraGain: 'Fixed camera gain.',
+    rpiCameraEV: 'Exposure compensation, in the range -10 to 10.',
+    rpiCameraROI: 'Region of interest as normalized x,y,width,height values.',
+    rpiCameraHDR: 'Enable HDR when supported by the camera.',
+    rpiCameraTuningFile: 'Path to a camera tuning file.',
+    rpiCameraMode: 'Sensor mode, formatted as width:height:bit-depth:packing.',
+    rpiCameraFPS: 'Camera frame rate in frames per second.',
+    rpiCameraAfMode: 'Autofocus mode, such as auto, manual, or continuous.',
+    rpiCameraAfRange: 'Autofocus range, such as normal, macro, or full.',
+    rpiCameraAfSpeed: 'Autofocus speed.',
+    rpiCameraLensPosition: 'Manual focus distance; 0 focuses at infinity and larger values focus closer.',
+    rpiCameraAfWindow: 'Autofocus window as normalized x,y,width,height values.',
+    rpiCameraFlickerPeriod: 'Manual flicker-correction period in microseconds.',
+    rpiCameraTextOverlayEnable: 'Print the configured text overlay on each camera frame.',
+    rpiCameraTextOverlay: 'Overlay text. Supports strftime-style date and time placeholders.',
+    rpiCameraCodec: 'Camera output codec, such as auto, hardwareH264, softwareH264, or mjpeg.',
+    rpiCameraIDRPeriod: 'Number of frames between IDR frames for H.264 output.',
+    rpiCameraBitrate: 'Target H.264 bitrate in bits per second.',
+    rpiCameraH264Profile: 'H.264 profile used by the camera encoder.',
+    rpiCameraH264Level: 'H.264 level used by the camera encoder.',
+    rpiCameraMJPEGQuality: 'JPEG quality for MJPEG output.',
+    runOnInit: 'Command to run when the path is initialized.',
+    runOnInitRestart: 'Restart the initialization command if it exits.',
+    runOnDemand: 'Command to run when a reader requests the path and no publisher is available.',
+    runOnDemandRestart: 'Restart the on-demand command if it exits.',
+    runOnDemandStartTimeout: 'Maximum time readers wait for the on-demand command to start publishing.',
+    runOnDemandCloseAfter: 'How long to wait after the last reader disconnects before closing the on-demand command.',
+    runOnUnDemand: 'Command to run when there are no readers left on the path.',
+    runOnAvailable: 'Command to run when the path becomes available.',
+    runOnAvailableRestart: 'Restart the available command if it exits.',
+    runOnUnavailable: 'Command to run when the path becomes unavailable.',
+    runOnOnline: 'Command to run when the stream becomes ready to read.',
+    runOnOnlineRestart: 'Restart the online command if it exits.',
+    runOnOffline: 'Command to run when the stream is no longer ready to read.',
+    runOnRead: 'Command to run when a reader starts reading the stream.',
+    runOnReadRestart: 'Restart the reader command if it exits.',
+    runOnUnread: 'Command to run when a reader stops reading the stream.',
+    runOnRecordSegmentCreate: 'Command to run when a recording segment is created.',
+    runOnRecordSegmentComplete: 'Command to run when a recording segment is complete.',
+};
+
+const PATH_DEFAULTS_PLACEHOLDERS = {
+    name: 'e.g. all_others',
+    source: 'publisher or rtsp://camera/stream',
+    sourceFingerprint: 'SHA-256 certificate fingerprint',
+    sourceOnDemandStartTimeout: 'e.g. 10s',
+    sourceOnDemandCloseAfter: 'e.g. 10s',
+    sourceRedirect: 'e.g. /another-path or rtsp://server/path',
+    alwaysAvailableFile: 'e.g. ./offline.mp4',
+    alwaysAvailableTracks: '[{"codec":"H264"}]',
+    recordDeleteAfter: 'e.g. 1d',
+    recordFormat: 'fmp4 or mpegts',
+    recordMaxPartSize: 'e.g. 50M',
+    recordPartDuration: 'e.g. 1s',
+    recordPath: './recordings/%path/%Y-%m-%d_%H-%M-%S',
+    recordSegmentDuration: 'e.g. 1h',
+    rtspRangeStart: 'e.g. 300ms or 20230812T120000Z',
+    rtspUDPSourcePortRange: '[10000, 65535]',
+    rtpSDP: 'Paste the RTP session description (SDP)',
+    forward: '[{"dest":"rtsp://server/path"}]',
+    runOnInit: 'Enter a command to run when the path is initialized',
+    runOnDemand: 'Enter a command to run when a reader requests the path',
+};
+
 function getPathDefaultsGroup(key) {
-    if (key.startsWith('runOn')) return 'Lifecycle Commands';
-    if (key.startsWith('record')) return 'Recording';
-    if (key.startsWith('alwaysAvailable') || key === 'maxReaders' || key === 'useAbsoluteTimestamp' || key === 'srtReadPassphrase') {
-        return 'Readers & Tracks';
-    }
+    const section = PATH_DEFAULTS_SECTIONS.find((candidate) => candidate.keys.includes(key));
+    if (section) return section.title;
+    if (key.startsWith('runOn')) return 'Hooks';
     if (key.startsWith('rpiCamera')) return 'Raspberry Pi Camera';
-    if (key === 'name' || key === 'source' || key.startsWith('source') || key === 'forward') {
-        return 'Source';
-    }
-    if (key.startsWith('rtsp') || key.startsWith('rtmp') || key.startsWith('srt') || key.startsWith('whep') || key.startsWith('moq') || key === 'rtpSDP') {
-        return 'Protocol Options';
-    }
-    return 'General';
+    if (key.startsWith('record')) return 'Record';
+    if (key.startsWith('rtsp')) return 'RTSP source';
+    if (key.startsWith('whep')) return 'WHEP source';
+    if (key.startsWith('moq')) return 'MoQ source';
+    return 'Other';
 }
 
 function getPathDefaultsLabel(key) {
     if (key === 'runOnUnDemand') return 'Run On Un-Demand';
     return key
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/\bRpi\b/gi, 'Raspberry Pi')
+        .replace(/\bRtsp\b/gi, 'RTSP')
+        .replace(/\bRtp\b/gi, 'RTP')
+        .replace(/\bSrt\b/gi, 'SRT')
+        .replace(/\bWhep\b/gi, 'WHEP')
+        .replace(/\bMoq\b/gi, 'MoQ')
+        .replace(/\bSdp\b/gi, 'SDP')
+        .replace(/\bAwb\b/gi, 'AWB')
+        .replace(/\bAf\b/gi, 'AF')
+        .replace(/\bH264\b/gi, 'H.264')
+        .replace(/\bMjpeg\b/gi, 'MJPEG')
         .replace(/^./, (character) => character.toUpperCase());
 }
 
@@ -2180,6 +2425,107 @@ function getPathDefaultsKind(key, value) {
     throw new Error(`Unsupported Path Defaults value for "${key}"`);
 }
 
+function getPathDefaultsArrayItemTemplate(key, value) {
+    if (value.length > 0) return value[0];
+    if (key === 'alwaysAvailableTracks') {
+        return { codec: 'H264', sampleRate: 0, channelCount: 0, muLaw: false };
+    }
+    if (key === 'forward') {
+        return { dest: '', destFingerprint: '', moqTransport: '', whipBearerToken: '' };
+    }
+    if (key === 'rpiCameraAWBGains' || key === 'rtspUDPSourcePortRange') return 0;
+    return '';
+}
+
+function renderPathDefaultsArrayControl(key, value, label, tooltip) {
+    const itemTemplate = getPathDefaultsArrayItemTemplate(key, value);
+    const items = value.length > 0 ? value : [];
+    return `
+        <div class="min-w-0" data-config-array-key="${escapeHtml(key)}">
+            <div class="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                <span>${escapeHtml(label)}</span>
+                <span class="cursor-help text-gray-400" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}" tabindex="0">
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0ZM9 8a1 1 0 1 1 2 0c-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+                    </svg>
+                </span>
+            </div>
+            <div data-array-items class="space-y-3">
+                ${items.map((item, index) => renderPathDefaultsArrayItem(key, item, itemTemplate, index)).join('')}
+            </div>
+            <button type="button" data-array-add="${escapeHtml(key)}" class="mt-3 inline-flex items-center gap-1 rounded-md bg-blue-500 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <span aria-hidden="true">+</span> Add item
+            </button>
+        </div>
+    `;
+}
+
+function renderPathDefaultsArrayItem(key, item, template, index) {
+    const inputClass = 'w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const isObject = template !== null && typeof template === 'object' && !Array.isArray(template);
+    const fields = isObject
+        ? Object.entries(template).map(([field, expected]) => {
+            const fieldValue = item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, field)
+                ? item[field]
+                : expected;
+            const kind = getPathDefaultsKind(field, fieldValue);
+            const fieldLabel = getPathDefaultsLabel(field);
+            const attributes = `data-array-field="${escapeHtml(field)}" data-array-kind="${kind}"`;
+            if (kind === 'boolean') {
+                return `
+                    <label class="inline-flex min-h-10 items-center gap-2">
+                        <input type="checkbox" ${attributes} ${fieldValue ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="text-sm text-gray-700">${escapeHtml(fieldLabel)}</span>
+                    </label>
+                `;
+            }
+            const placeholder = typeof expected === 'number' ? 'e.g. 0' : `Enter ${fieldLabel.toLowerCase()}`;
+            return `
+                <label class="block min-w-0">
+                    <span class="mb-1 block text-xs font-medium text-gray-600">${escapeHtml(fieldLabel)}</span>
+                    <input ${attributes} type="${kind === 'number' ? 'number' : 'text'}" ${kind === 'number' ? `step="${Number.isInteger(expected) ? '1' : 'any'}"` : ''} value="${escapeHtml(fieldValue === null ? '' : String(fieldValue))}" placeholder="${escapeHtml(placeholder)}" class="${inputClass}">
+                </label>
+            `;
+        }).join('')
+        : (() => {
+            const kind = getPathDefaultsKind(key, item);
+            const valueControl = kind === 'boolean'
+                ? `<input data-array-value data-array-kind="${kind}" type="checkbox" ${item ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">`
+                : `<input data-array-value data-array-kind="${kind}" type="${kind === 'number' ? 'number' : 'text'}" ${kind === 'number' ? `step="${Number.isInteger(template) ? '1' : 'any'}"` : ''} value="${escapeHtml(item === null ? '' : String(item))}" placeholder="${typeof template === 'number' ? 'e.g. 0' : 'Enter a value'}" class="${inputClass}">`;
+            return `
+                <label class="${kind === 'boolean' ? 'inline-flex min-h-10 items-center gap-2' : 'block min-w-0 flex-1'}">
+                    <span class="mb-1 block text-xs font-medium text-gray-600">Value</span>
+                    ${valueControl}
+                </label>
+            `;
+        })();
+
+    return `
+        <div data-array-item class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div class="mb-3 flex items-center justify-between">
+                <span data-array-item-label class="text-xs font-semibold uppercase tracking-wide text-gray-500">Item ${index + 1}</span>
+                <button type="button" data-array-remove class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Remove</button>
+            </div>
+            <div class="${isObject ? 'grid grid-cols-1 gap-3 sm:grid-cols-2' : 'flex items-end gap-3'}">
+                ${fields}
+            </div>
+        </div>
+    `;
+}
+
+function addPathDefaultsArrayItem(key) {
+    const arrayField = Array.from(document.querySelectorAll('[data-config-array-key]'))
+        .find((candidate) => candidate.dataset.configArrayKey === key);
+    const container = arrayField?.querySelector('[data-array-items]');
+    if (!container || !originalDefaults || !Array.isArray(originalDefaults[key])) {
+        setConfigDefaultsStatus(`Unable to add an item to "${key}".`, 'error');
+        return;
+    }
+    const template = getPathDefaultsArrayItemTemplate(key, originalDefaults[key]);
+    container.insertAdjacentHTML('beforeend', renderPathDefaultsArrayItem(key, template, template, container.children.length));
+    document.getElementById('config-defaults-form').dataset.dirty = 'true';
+}
+
 function isPathDefaultsDuration(key, value) {
     return typeof value === 'string' &&
         (/timeout|closeafter|duration/i.test(key) || /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:ns|us|µs|μs|ms|s|m|h)/.test(value));
@@ -2188,7 +2534,9 @@ function isPathDefaultsDuration(key, value) {
 function renderPathDefaultsField(key, value) {
     const kind = getPathDefaultsKind(key, value);
     const label = getPathDefaultsLabel(key);
-    const tooltip = `MediaMTX field: ${key} (${kind})`;
+    const group = getPathDefaultsGroup(key);
+    const tooltip = PATH_DEFAULTS_FIELD_DESCRIPTIONS[key] ||
+        `Sets ${label.toLowerCase()} for the ${group.toLowerCase()} settings.`;
     const attributes = `data-config-key="${escapeHtml(key)}" data-config-kind="${kind}"`;
 
     if (kind === 'boolean') {
@@ -2208,28 +2556,37 @@ function renderPathDefaultsField(key, value) {
         `;
     }
 
+    if (kind === 'array') {
+        return renderPathDefaultsArrayControl(key, value, label, tooltip);
+    }
+
     const valueText = kind === 'array' || kind === 'object'
         ? JSON.stringify(value, null, 2)
         : value === null ? '' : String(value);
     const duration = kind === 'string' && isPathDefaultsDuration(key, value);
+    const placeholder = PATH_DEFAULTS_PLACEHOLDERS[key] ||
+        (duration ? 'e.g. 10s or 1h30m' :
+            kind === 'array' || kind === 'object' ? 'Enter a JSON value' :
+                kind === 'number' ? 'e.g. 0' :
+                    key.startsWith('runOn') ? 'Enter a command' :
+                        `Enter ${label.toLowerCase()}`);
     const inputClass = 'w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500';
     let control;
 
-    if (kind === 'array' || kind === 'object' || key.startsWith('runOn') || key === 'rtpSDP') {
-        control = `<textarea ${attributes} rows="${kind === 'array' || kind === 'object' ? 4 : 3}" class="${inputClass} font-mono" spellcheck="false">${escapeHtml(valueText)}</textarea>`;
+    if (kind === 'object' || key.startsWith('runOn') || key === 'rtpSDP') {
+        control = `<textarea ${attributes} rows="${kind === 'object' ? 4 : 3}" placeholder="${escapeHtml(placeholder)}" class="${inputClass} font-mono" spellcheck="false">${escapeHtml(valueText)}</textarea>`;
     } else if (kind === 'number') {
         const step = Number.isInteger(value) ? '1' : 'any';
-        control = `<input ${attributes} type="number" step="${step}" value="${escapeHtml(valueText)}" class="${inputClass}">`;
+        control = `<input ${attributes} type="number" step="${step}" value="${escapeHtml(valueText)}" placeholder="${escapeHtml(placeholder)}" class="${inputClass}">`;
     } else {
-        const placeholder = duration ? 'e.g. 10s or 1h30m' : '';
-        control = `<input ${attributes} type="text" value="${escapeHtml(valueText)}" placeholder="${placeholder}" ${kind === 'null' ? 'data-config-null="true"' : ''} class="${inputClass}">`;
+        control = `<input ${attributes} type="text" value="${escapeHtml(valueText)}" placeholder="${escapeHtml(placeholder)}" ${kind === 'null' ? 'data-config-null="true"' : ''} class="${inputClass}">`;
     }
 
     return `
         <label class="block min-w-0">
             <span class="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">
                 ${escapeHtml(label)}
-                <span class="cursor-help text-gray-400" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">
+                <span class="cursor-help text-gray-400" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}" tabindex="0">
                     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
                     </svg>
@@ -2243,28 +2600,57 @@ function renderPathDefaultsField(key, value) {
 
 function renderConfigDefaults(config) {
     const container = document.getElementById('config-defaults-fields');
-    if (!container) return;
+    const nav = document.getElementById('config-defaults-nav');
+    if (!container || !nav) return;
 
-    const groups = new Map();
+    const grouped = new Map();
     Object.entries(config).forEach(([key, value]) => {
         const group = getPathDefaultsGroup(key);
-        if (!groups.has(group)) groups.set(group, []);
-        groups.get(group).push([key, value]);
+        if (!grouped.has(group)) grouped.set(group, []);
+        grouped.get(group).push([key, value]);
     });
 
-    if (groups.size === 0) {
+    if (grouped.size === 0) {
+        nav.innerHTML = '';
         container.innerHTML = '<div class="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">MediaMTX returned no Path Defaults fields.</div>';
         return;
     }
 
-    container.innerHTML = Array.from(groups.entries()).map(([group, fields]) => `
-        <section class="min-w-0 rounded-lg border border-gray-200 bg-white p-5 sm:p-6">
-            <h3 class="mb-5 text-lg font-semibold text-gray-900">${escapeHtml(group)}</h3>
-            <div class="grid min-w-0 grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                ${fields.map(([key, value]) => renderPathDefaultsField(key, value)).join('')}
-            </div>
-        </section>
+    const orderedSections = PATH_DEFAULTS_SECTIONS
+        .filter((section) => grouped.has(section.title))
+        .map((section) => [section, grouped.get(section.title)]);
+    const knownGroups = new Set(PATH_DEFAULTS_SECTIONS.map((section) => section.title));
+    grouped.forEach((fields, title) => {
+        if (!knownGroups.has(title)) {
+            orderedSections.push([
+                { title, description: 'Additional settings returned by the MediaMTX API.' },
+                fields,
+            ]);
+        }
+    });
+
+    nav.innerHTML = orderedSections.map(([section]) => `
+        <button
+            type="button"
+            data-section-target="config-defaults-${escapeHtml(section.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}"
+            class="rounded-md bg-blue-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >${escapeHtml(section.title)}</button>
     `).join('');
+
+    container.innerHTML = orderedSections.map(([section, fields]) => {
+        const sectionId = `config-defaults-${section.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+        return `
+            <section id="${escapeHtml(sectionId)}" class="min-w-0 scroll-mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <div class="border-b border-gray-200 bg-gray-100 px-5 py-3 sm:px-6">
+                    <h3 class="text-center text-base font-semibold text-gray-800">${escapeHtml(section.title)}</h3>
+                    <p class="mt-1 text-center text-xs text-gray-600">${escapeHtml(section.description)}</p>
+                </div>
+                <div class="grid min-w-0 grid-cols-1 gap-5 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
+                    ${fields.map(([key, value]) => renderPathDefaultsField(key, value)).join('')}
+                </div>
+            </section>
+        `;
+    }).join('');
 }
 
 function setConfigDefaultsStatus(message, type) {
@@ -2312,12 +2698,62 @@ function validatePathDefaultsValueShape(expected, value, path) {
     }
 }
 
+function readPathDefaultsArrayValue(control, expected, path) {
+    if (expected !== null && typeof expected === 'object' && !Array.isArray(expected)) {
+        const value = {};
+        Object.entries(expected).forEach(([key, expectedValue]) => {
+            const field = Array.from(control.querySelectorAll('[data-array-field]'))
+                .find((candidate) => candidate.dataset.arrayField === key);
+            if (!field) throw new Error(`Missing input for ${path}.${key}.`);
+            value[key] = readPathDefaultsArrayValue(field, expectedValue, `${path}.${key}`);
+        });
+        return value;
+    }
+
+    if (typeof expected === 'boolean') return control.checked;
+    if (typeof expected === 'number') {
+        if (control.value.trim() === '') throw new Error(`${path} must be a number.`);
+        const numberValue = Number(control.value);
+        if (!Number.isFinite(numberValue) || (Number.isInteger(expected) && !Number.isInteger(numberValue))) {
+            throw new Error(`${path} must be a valid ${Number.isInteger(expected) ? 'integer' : 'number'}.`);
+        }
+        return numberValue;
+    }
+    if (expected === null && control.value === '') return null;
+    return control.value;
+}
+
+function collectPathDefaultsArray(key, originalValue) {
+    const arrayField = Array.from(document.querySelectorAll('[data-config-array-key]'))
+        .find((candidate) => candidate.dataset.configArrayKey === key);
+    if (!arrayField) throw new Error(`Missing form field for "${key}".`);
+    const itemTemplate = getPathDefaultsArrayItemTemplate(key, originalValue);
+    const items = Array.from(arrayField.querySelectorAll('[data-array-item]'));
+    const values = items.map((item, index) => {
+        const control = item.querySelector('[data-array-value], [data-array-field]');
+        if (!control) throw new Error(`Missing input for ${getPathDefaultsLabel(key)} item ${index + 1}.`);
+        const isObject = itemTemplate !== null && typeof itemTemplate === 'object' && !Array.isArray(itemTemplate);
+        return readPathDefaultsArrayValue(
+            isObject ? item : control,
+            itemTemplate,
+            `${getPathDefaultsLabel(key)}[${index}]`
+        );
+    });
+    validatePathDefaultsValueShape(originalValue, values, getPathDefaultsLabel(key));
+    return values;
+}
+
 function collectConfigDefaults() {
     const form = document.getElementById('config-defaults-form');
     const controls = Array.from(form.querySelectorAll('[data-config-key]'));
     const values = {};
 
     Object.entries(originalDefaults).forEach(([key, originalValue]) => {
+        if (Array.isArray(originalValue)) {
+            values[key] = collectPathDefaultsArray(key, originalValue);
+            return;
+        }
+
         const control = controls.find((candidate) => candidate.dataset.configKey === key);
         if (!control) throw new Error(`Missing form field for "${key}".`);
 
