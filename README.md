@@ -61,6 +61,8 @@ Mode host menjalankan dashboard dan Node Exporter di host network. Mode ini mema
 | GET | `/api/server/health` | Cek MediaMTX terhubung atau tidak |
 | GET | `/api/server/config` | Konfigurasi global MediaMTX |
 | PATCH | `/api/server/config` | Ubah konfigurasi global (tanpa restart) |
+| GET | `/api/config/path-defaults` | Membaca konfigurasi default path dari MediaMTX v3 |
+| PATCH | `/api/config/path-defaults` | Mengubah konfigurasi default path di runtime MediaMTX |
 | GET | `/api/streams` | Daftar stream: online/offline, penonton, trafik, URL tonton |
 | GET | `/api/streams/summary` | Angka ringkas untuk kartu statistik |
 | GET | `/api/streams/{name}` | Detail satu stream |
