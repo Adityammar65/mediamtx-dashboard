@@ -1,6 +1,7 @@
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 import asyncio
 import time
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,16 @@ _SENSITIVE_QUERY_KEYS = {
     "secret",
     "token",
 }
+
+_PROTOCOL_READER_KEYS = (
+    "hlsMuxers",
+    "rtspSessions",
+    "rtspConns",
+    "rtmpConns",
+    "webrtcSessions",
+    "webrtcConns",
+    "srtConns",
+)
 
 
 def _mask_sensitive_url(value):
@@ -57,15 +68,16 @@ def _mask_path_config(config):
 
 class MediaMTXClient:
     _instance = None
+    _viewer_history = {}
 
-    # RAM Version Control / State cache
+
     _cache_lock = asyncio.Lock()
     _ram_config = {}
     _cache_loaded = False
     _yaml_path = Path("mediamtx.yml")
     _is_dirty = False
     _last_modified = 0.0
-    _debounce_seconds = 30.0  # Simpan ke file jika sudah tenang selama 5 menit
+    _debounce_seconds = 30.0
 
     def __init__(self):
         base = str(settings.MEDIAMTX_API_URL).rstrip("/")
@@ -87,7 +99,7 @@ class MediaMTXClient:
     @staticmethod
     def _sanitize_config_for_mediamtx(config: dict) -> dict:
         """Membersihkan struktur config agar tidak ada objek bersarang yang invalid untuk tipe data Go/MediaMTX."""
-        # List of fields that are aliased (not strictly bool) in MediaMTX
+
         alias_fields = {"rtspEncryption", "rtmpEncryption", "hlsVariant", "authMethod"}
         cleaned = {}
 
@@ -125,7 +137,7 @@ class MediaMTXClient:
             MediaMTXClient._is_dirty = True
             MediaMTXClient._last_modified = time.time()
 
-        # Jalankan background task untuk debounce save
+
         asyncio.create_task(self._debounce_flush())
 
     async def _debounce_flush(self):
@@ -154,6 +166,7 @@ class MediaMTXClient:
                 print(f"[Error] Gagal final sync ke mediamtx.yml: {e}")
 
     # --- Server ---
+
     async def get_server_health(self):
         try:
             r = await self.client.get(f"{self.base_url}/info")
@@ -212,6 +225,7 @@ class MediaMTXClient:
             )
 
     # --- Paths ---
+
     async def list_paths(self):
         r = await self.client.get(f"{self.base_url}/config/paths/list")
         r.raise_for_status()
@@ -224,13 +238,13 @@ class MediaMTXClient:
         data = {}
         if source:
             data["source"] = source
-            # sourceOnDemand applies to URL sources; sending it for publisher
-            # and redirect paths can make MediaMTX reject the configuration.
+
+
             if source_on_demand is not None:
                 data["sourceOnDemand"] = source_on_demand
         elif kwargs.get("source_redirect"):
             data["source"] = "redirect"
-        # Optional fields
+
         if kwargs.get("source_on_demand_start_timeout"):
             data["sourceOnDemandStartTimeout"] = kwargs["source_on_demand_start_timeout"]
         if kwargs.get("source_on_demand_close_after"):
@@ -257,7 +271,7 @@ class MediaMTXClient:
         return _mask_path_config(r.json())
 
     async def update_path(self, name, payload):
-        # Map frontend field names to MediaMTX API field names
+
         mapped = {}
         field_map = {
             "source": "source",
@@ -295,6 +309,7 @@ class MediaMTXClient:
         asyncio.create_task(self._debounce_flush())
 
     # --- Streams ---
+
     async def list_streams(self):
         rtsp_con = await self.list_rtsp_connections()
         rtmp_con = await self.list_rtmp_connections()
@@ -326,7 +341,7 @@ class MediaMTXClient:
                 "bytes_sent": s.get("bytesSent", 0)
             })
 
-        # Normalisasi koneksi RTMP
+
         for s in rtmp_items:
             if s.get("state", "") == "":
                 continue
@@ -340,7 +355,7 @@ class MediaMTXClient:
                 "bytes_sent": s.get("bytesSent", 0)
             })
 
-        # Normalisasi koneksi HLS
+
         for s in hls_items:
             if s.get("state", "") == "":
                 continue
@@ -354,7 +369,7 @@ class MediaMTXClient:
                 "bytes_sent": s.get("bytesSent", 0)
             })
 
-        # Normalisasi sesi rtsp
+
         for s in rtsp_items_ses:
             normalized.append({
                 "type": "rtsp",
@@ -366,7 +381,7 @@ class MediaMTXClient:
                 "bytes_sent": s.get("bytesSent", 0)
             })
 
-        # Normalisasi sesi RTMP
+
         for s in rtmp_items_ses:
             normalized.append({
                 "type": "rtmp",
@@ -378,7 +393,7 @@ class MediaMTXClient:
                 "bytes_sent": s.get("bytesSent", 0)
             })
 
-        # Normalisasi sesi HLS
+
         for s in hls_items_ses:
             normalized.append({
                 "type": "hls",
@@ -441,12 +456,55 @@ class MediaMTXClient:
             "name": data.get("name"),
             "ready": data.get("ready"),
             "tracks": data.get("tracks") or [],
-            "readers": len(data.get("readers", [])) if isinstance(data.get("readers"), list) else 0,
+            "readers": self._count_path_readers(data),
             "bytes_received": data.get("bytesReceived", 0),
             "bytes_sent": data.get("bytesSent", 0)
         }
 
+    @staticmethod
+    def _count_path_readers(data):
+        protocol_reader_count = sum(
+            len(data[key])
+            for key in _PROTOCOL_READER_KEYS
+            if isinstance(data.get(key), list)
+        )
+        if protocol_reader_count:
+            return protocol_reader_count
+
+        readers = data.get("readers")
+        return len(readers) if isinstance(readers, list) else 0
+
+    async def get_stream_viewers(self, name):
+        encoded_name = quote(name, safe="")
+        response = await self.client.get(
+            f"{self.base_url}/paths/get/{encoded_name}",
+            timeout=3.0,
+        )
+        if response.status_code == 404:
+            history = MediaMTXClient._viewer_history.setdefault(name, deque(maxlen=60))
+            history.append(0)
+            return {
+                "viewer_count": 0,
+                "status": "inactive",
+                "viewer_history": list(history),
+            }
+
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("MediaMTX returned an invalid path response")
+
+        viewer_count = self._count_path_readers(data)
+        history = MediaMTXClient._viewer_history.setdefault(name, deque(maxlen=60))
+        history.append(viewer_count)
+        return {
+            "viewer_count": viewer_count,
+            "status": "active" if data.get("ready") is True else "inactive",
+            "viewer_history": list(history),
+        }
+
     # --- Sessions ---
+
     async def list_sessions(self):
         sessions = []
         protocols = ["rtsp", "webrtc"]
@@ -471,8 +529,8 @@ class MediaMTXClient:
         return {"items": sessions}
 
     async def kick_session(self, type, id):
-        # MediaMTX uses different endpoints for different protocols
-        # Connections vs Sessions endpoints vary by protocol
+
+
         endpoint_map = {
             "rtsp": "rtsp/sessions/kick",
             "rtsps": "rtsp/sessions/kick",
@@ -506,7 +564,7 @@ class MediaMTXClient:
             try:
                 r = await self.client.get(f"{self.base_url}/{endpoint}")
                 if r.status_code == 404:
-                    # Endpoint not available in this MediaMTX version
+
                     continue
                 r.raise_for_status()
                 data = r.json()
@@ -516,15 +574,15 @@ class MediaMTXClient:
                     if normalized:
                         all_sessions.append(normalized)
             except httpx.HTTPError:
-                # Protocol endpoint not available or error, skip
+
                 continue
 
         return {"items": all_sessions}
 
     def _normalize_session(self, item, proto):
         """Normalize session/connection item from any protocol to common schema."""
-        # MediaMTX returns different field names across protocols
-        # Common fields: id, path, remoteAddr/remote_addr, bytesReceived/bytes_received, bytesSent/bytes_sent, ready
+
+
         session_id = item.get("id") or item.get("ID")
         if not session_id:
             return None
@@ -549,6 +607,7 @@ class MediaMTXClient:
         await self.client.aclose()
 
     # --- Path Defaults ---
+
     async def get_path_defaults(self):
         r = await self.client.get(f"{self.base_url}/config/path-defaults/get")
         r.raise_for_status()
@@ -562,6 +621,7 @@ class MediaMTXClient:
         return r.json()
 
     # --- Protocol Sessions/Connections ---
+
     async def list_hls_connections(self):
         try:
             r = await self.client.get(f"{self.base_url}/hls/conns/list")
@@ -611,6 +671,7 @@ class MediaMTXClient:
             return {"items": []}
 
     # --- Metrics ---
+
     async def get_metrics(self):
         try:
             r = await self.client.get(f"{self.base_url}/metrics")
@@ -620,7 +681,6 @@ class MediaMTXClient:
             return ""
 
     # --- Logs ---
-    # Log reading is handled directly in the backend via file I/O
-    # This method is kept for interface compatibility but not used
+
     async def read_log_file(self, path, lines=100):
         return {"lines": [], "error": "Log reading not implemented in MediaMTX API"}

@@ -1,4 +1,4 @@
-// MediaMTX Dashboard Frontend Logic
+
 
 const API_BASE = '/api';
 let refreshInterval = null;
@@ -7,6 +7,7 @@ let currentPathName = null;
 let currentRoute = '';
 let sidebarCollapsed = false;
 let pathHlsPlayer = null;
+let authRedirecting = false;
 
 // --- Utility Functions ---
 
@@ -25,9 +26,9 @@ function formatNumber(num) {
 
 function getUptimeSeconds(startedString) {
     if (!startedString) return 0;
-    const startTime = new Date(startedString).getTime(); // Ubah ke milidetik
-    const now = Date.getTime ? Date.now() : new Date().getTime(); // Waktu sekarang
-    const diffSeconds = Math.floor((now - startTime) / 1000); // Konversi ke detik
+    const startTime = new Date(startedString).getTime();
+    const now = Date.getTime ? Date.now() : new Date().getTime();
+    const diffSeconds = Math.floor((now - startTime) / 1000);
     return diffSeconds > 0 ? diffSeconds : 0;
 }
 
@@ -53,7 +54,12 @@ async function fetchAPI(endpoint, options = {}) {
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({ message: 'Request failed' }));
-        const error = new Error(err.message || `HTTP ${res.status}`);
+        if (res.status === 401 && !authRedirecting) {
+            authRedirecting = true;
+            stopAutoRefresh();
+            window.location.replace('/login');
+        }
+        const error = new Error(err.message || err.detail || `HTTP ${res.status}`);
         error.status = res.status;
         throw error;
     }
@@ -108,12 +114,12 @@ function renderSparkline(svgId, data, color, fillColor) {
     if (!svg || !data || data.length === 0) return;
 
     const width = svg.clientWidth || 200;
-    const height = 96; // 24 * 4
+    const height = 96;
     const padding = 2;
     const usableWidth = width - padding * 2;
     const usableHeight = height - padding * 2;
 
-    // Normalize data to 0-1 range
+
     const maxVal = Math.max(...data, 1);
     const minVal = Math.min(...data, 0);
     const range = maxVal - minVal || 1;
@@ -239,7 +245,7 @@ function updateMetricCard(metric, data) {
                 detailEl.textContent = data.network?.error || 'Network metrics unavailable';
                 detailEl.classList.remove('hidden');
             }
-            // Combine RX and TX for sparkline (show both as separate lines)
+
             renderNetworkSparkline('net-sparkline', rxHistory, txHistory);
             break;
         }
@@ -356,8 +362,9 @@ function initSidebar() {
     const mobileMenuBtn = document.getElementById('mobile-menu-btn');
     const sidebarOverlay = document.getElementById('sidebar-overlay');
     const sidebarLogo = document.getElementById('sidebar-logo');
+    const logoutButton = document.getElementById('logout-btn');
 
-    // Load collapsed state from localStorage
+
     const savedCollapsed = localStorage.getItem('sidebarCollapsed');
     if (savedCollapsed === 'true') {
         sidebarCollapsed = true;
@@ -366,7 +373,7 @@ function initSidebar() {
         sidebarLogo.textContent = 'M';
     }
 
-    // Toggle sidebar collapse (desktop)
+
     sidebarToggle.addEventListener('click', () => {
         sidebarCollapsed = !sidebarCollapsed;
         sidebar.classList.toggle('sidebar-collapsed');
@@ -375,21 +382,21 @@ function initSidebar() {
         localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
     });
 
-    // Mobile menu button
+
     mobileMenuBtn.addEventListener('click', () => {
         sidebar.classList.add('mobile-open');
         sidebarOverlay.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
     });
 
-    // Close mobile sidebar on overlay click
+
     sidebarOverlay.addEventListener('click', () => {
         sidebar.classList.remove('mobile-open');
         sidebarOverlay.classList.add('hidden');
         document.body.style.overflow = '';
     });
 
-    // Close mobile sidebar on nav link click
+
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', () => {
             if (window.innerWidth < 1024) {
@@ -398,6 +405,20 @@ function initSidebar() {
                 document.body.style.overflow = '';
             }
         });
+    });
+
+    logoutButton.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to log out?')) return;
+
+        logoutButton.disabled = true;
+        try {
+            await fetchAPI('/logout', { method: 'POST' });
+            stopAutoRefresh();
+            window.location.replace('/login');
+        } catch (error) {
+            logoutButton.disabled = false;
+            alert(`Unable to log out: ${error.message}`);
+        }
     });
 }
 
@@ -451,10 +472,10 @@ async function navigateToPage(page, pathName = null) {
 
         content.innerHTML = await response.text();
 
-        // Re-bind events for the newly loaded content
+
         bindPageEvents(page);
 
-        // Update UI state
+
         document.querySelectorAll('.nav-link').forEach(link => {
             link.classList.toggle(
                 'nav-active',
@@ -496,6 +517,11 @@ function bindPageEvents(page) {
             if (button.dataset.pathAction === 'edit') window.editPath(name);
             if (button.dataset.pathAction === 'delete') window.deletePath(name);
         });
+        document.getElementById('streams-search')?.addEventListener('input', () => {
+            streamsCurrentPage = 1;
+            renderStreams(allStreams);
+        });
+        document.getElementById('streams-refresh')?.addEventListener('click', loadStreams);
     }
     if (page === 'path-detail') {
         document.getElementById('path-detail-test')?.addEventListener('click', testPathPreview);
@@ -585,7 +611,7 @@ function bindPageEvents(page) {
         document.getElementById('logs-custom-modal-close')?.addEventListener('click', closeCustomPeriodModal);
         document.getElementById('logs-custom-modal-cancel')?.addEventListener('click', closeCustomPeriodModal);
         document.getElementById('logs-custom-modal-confirm')?.addEventListener('click', confirmCustomPeriodDelete);
-        // Close dropdown when clicking outside
+
         document.addEventListener('click', (e) => {
             const menu = document.getElementById('logs-delete-menu');
             if (menu && !menu.contains(e.target)) closeDeleteDropdown();
@@ -593,9 +619,14 @@ function bindPageEvents(page) {
     }
     if (page === 'config-paths') {
         document.getElementById('config-paths-add-btn')?.addEventListener('click', () => openConfigPathModal());
-        document.getElementById('config-paths-search')?.addEventListener('input', () => renderConfigPaths(allConfigPaths));
+        document.getElementById('config-paths-search')?.addEventListener('input', () => {
+            configPathsCurrentPage = 1;
+            renderConfigPaths(allConfigPaths);
+        });
         document.getElementById('config-paths-refresh')?.addEventListener('click', loadConfigPaths);
         document.getElementById('config-paths-export-btn')?.addEventListener('click', exportConfigPaths);
+        document.getElementById('config-paths-prev-page')?.addEventListener('click', () => changeConfigPathsPage(-1));
+        document.getElementById('config-paths-next-page')?.addEventListener('click', () => changeConfigPathsPage(1));
         initAmsImport();
     }
 }
@@ -659,10 +690,10 @@ function formatUptimeFromStart(started) {
 async function loadDashboard() {
     let anySuccess = false;
 
-    // 0. System Monitor (host metrics from Node Exporter)
+
     fetchSystemMetrics();
 
-    // 1. Streams summary (Total/Online/Offline streams, viewers, traffic)
+
     try {
         const summary = await fetchAPI('/streams/summary');
         if (summary.success) {
@@ -677,7 +708,7 @@ async function loadDashboard() {
         renderSummaryError();
     }
 
-    // 2. Sessions from all protocols (table)
+
     try {
         const sessions = await fetchAPI('/sessions');
         if (sessions.success) {
@@ -690,7 +721,7 @@ async function loadDashboard() {
         renderSessionsError();
     }
 
-    // 3. Server health (version, connection status, uptime from started)
+
     try {
         const health = await fetchAPI('/server/health');
         if (health.success) {
@@ -703,7 +734,7 @@ async function loadDashboard() {
         renderServerStatusError();
     }
 
-    // 4. Total Paths from config paths endpoint
+
     const totalPaths = document.getElementById('server-total-paths');
     try {
         const paths = await fetchAPI('/paths');
@@ -718,8 +749,8 @@ async function loadDashboard() {
         totalPaths.textContent = '-';
     }
 
-    // 5. Active paths and total readers already rendered by summary
-    // (server-active-paths, server-total-readers, server-traffic)
+
+
 
     setConnectionStatus(anySuccess);
 }
@@ -731,7 +762,7 @@ function renderSummary(data) {
     document.getElementById('stat-viewers').textContent = formatNumber(data.total_readers);
     document.getElementById('online-count').textContent = formatNumber(data.online) + " Online"
 
-    // Update server traffic in the status card
+
     document.getElementById('server-traffic').textContent =
         `${formatBytes(data.total_bytes_received)} / ${formatBytes(data.total_bytes_sent)}`;
     document.getElementById('server-total-readers').textContent = formatNumber(data.total_readers);
@@ -777,7 +808,7 @@ function renderServerStatus(health) {
     statusEl.className = `px-3 py-1 text-sm rounded-lg ${connected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
 
     document.getElementById('server-version').textContent = health.version || 'unknown';
-    // Use 'started' field from MediaMTX /info endpoint to calculate uptime
+
     document.getElementById('server-uptime').textContent = formatUptimeFromStart(health.started);
 }
 
@@ -808,14 +839,32 @@ function renderPaths(paths) {
 function renderStreams(streams) {
     const tbody = document.getElementById('streams-table-body');
     const countEl = document.getElementById('streams-count');
+    const searchTerm = document.getElementById('streams-search')?.value.toLowerCase() || '';
 
-    if (streams.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">No active streams</td></tr>';
+    const filtered = streams.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const protocol = (s.type || '').toLowerCase();
+        const remoteAddr = (s.remote_addr || '').toLowerCase();
+        return name.includes(searchTerm) || protocol.includes(searchTerm) || remoteAddr.includes(searchTerm);
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / STREAMS_PER_PAGE));
+    if (streamsCurrentPage > totalPages) {
+        streamsCurrentPage = totalPages;
+    }
+
+    const startIdx = (streamsCurrentPage - 1) * STREAMS_PER_PAGE;
+    const endIdx = startIdx + STREAMS_PER_PAGE;
+    const pageStreams = filtered.slice(startIdx, endIdx);
+
+    if (pageStreams.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-500">No active streams</td></tr>';
         if (countEl) countEl.textContent = '0 streams';
+        updateStreamsPaginationControls(0, 0);
         return;
     }
 
-    tbody.innerHTML = streams.map(s => {
+    tbody.innerHTML = pageStreams.map(s => {
         return `
             <tr class="hover:bg-gray-50">
                 <td class="px-6 py-4 font-mono text-sm">${escapeHtml(s.name)}</td>
@@ -836,7 +885,39 @@ function renderStreams(streams) {
             </tr>
         `;
     }).join('');
-    countEl.textContent = `${streams.length} stream${streams.length !== 1 ? 's' : ''}`;
+    countEl.textContent = `${filtered.length} stream${filtered.length !== 1 ? 's' : ''} (showing ${pageStreams.length})`;
+    updateStreamsPaginationControls(filtered.length, totalPages);
+}
+
+function updateStreamsPaginationControls(totalFiltered, totalPages) {
+    const prevBtn = document.getElementById('streams-prev-page');
+    const nextBtn = document.getElementById('streams-next-page');
+    const pageInfo = document.getElementById('streams-page-info');
+
+    if (!prevBtn || !nextBtn || !pageInfo) return;
+
+    prevBtn.disabled = streamsCurrentPage <= 1;
+    nextBtn.disabled = streamsCurrentPage >= totalPages;
+    pageInfo.textContent = totalFiltered === 0 ? 'Page 0 of 0' : `Page ${streamsCurrentPage} of ${totalPages}`;
+}
+
+function changeStreamsPage(delta) {
+    const searchTerm = document.getElementById('streams-search')?.value.toLowerCase() || '';
+
+    const filtered = allStreams.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const protocol = (s.type || '').toLowerCase();
+        const remoteAddr = (s.remote_addr || '').toLowerCase();
+        return name.includes(searchTerm) || protocol.includes(searchTerm) || remoteAddr.includes(searchTerm);
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / STREAMS_PER_PAGE));
+    const newPage = Math.max(1, Math.min(totalPages, streamsCurrentPage + delta));
+
+    if (newPage !== streamsCurrentPage) {
+        streamsCurrentPage = newPage;
+        renderStreams(allStreams);
+    }
 }
 
 function renderDashboardSessions(sessions) {
@@ -867,41 +948,36 @@ function renderDashboardSessions(sessions) {
     `).join('');
 }
 
-function renderServerStatus(health) {
-    const connected = health.connected === true;
-    const statusEl = document.getElementById('server-connection-status');
-    statusEl.textContent = connected ? 'Connected' : 'Disconnected';
-    statusEl.className = `px-3 py-1 text-sm rounded-lg ${connected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
-
-    document.getElementById('server-version').textContent = health.version || 'unknown';
-    document.getElementById('server-uptime').textContent = formatUptime(health.started);
-}
-
 function renderServerConfig(config) {
-    // Extract path count from config if available
+
     const paths = config.paths || {};
     const pathCount = Object.keys(paths).length;
 
-    // We'll get active paths and readers from the streams summary instead
-    // This is just for static config info
+
+
     document.getElementById('server-total-paths').textContent = pathCount;
 }
 
 // --- Paths ---
 
 let allPaths = [];
+let allStreams = [];
+let streamsCurrentPage = 1;
+const STREAMS_PER_PAGE = 10;
 
 async function loadStreams() {
-      try {
-          const paths = await fetchAPI('/streams');
-          if (paths.success) {
-              allPaths = paths.data.items || [];
-              renderStreams(allPaths);
-          }
-          setConnectionStatus(true);
-      } catch (e) {
-          showError(e.message);
-          setConnectionStatus(false);
+    try {
+        const paths = await fetchAPI('/streams');
+        if (paths.success) {
+            allPaths = paths.data.items || [];
+            allStreams = paths.data.items || [];
+            streamsCurrentPage = 1;
+            renderStreams(allStreams);
+        }
+        setConnectionStatus(true);
+    } catch (e) {
+        showError(e.message);
+        setConnectionStatus(false);
     }
 }
 
@@ -973,6 +1049,7 @@ async function loadPathDetail(pathName) {
         outputUrls: [],
     };
     renderPathDetail();
+    refreshPathViewers();
     setConnectionStatus(true);
     if (!runtimeAvailable) {
         showPathNotice(`Configuration is available, but runtime status could not be loaded: ${pathDetailState.runtimeError}`, 'warning');
@@ -1162,6 +1239,7 @@ function renderPathOutputRows(outputs) {
 async function refreshPathRuntime() {
     if (!pathDetailState) return;
     const state = pathDetailState;
+    refreshPathViewers(state);
     try {
         const response = await fetchAPI(`/streams/${encodeURIComponent(state.name)}`);
         if (!response.success) throw new Error(response.message || 'Failed to load runtime path');
@@ -1181,6 +1259,79 @@ async function refreshPathRuntime() {
         showError(`path runtime: ${error.message}`);
         setConnectionStatus(false);
     }
+}
+
+async function refreshPathViewers(state = pathDetailState) {
+    if (!state || state.viewerRefreshInFlight || currentPage !== 'path-detail') return;
+    state.viewerRefreshInFlight = true;
+    try {
+        const response = await fetchAPI(`/streams/${encodePathSegments(state.name)}/viewers`);
+        if (!response.success) throw new Error(response.message || 'Failed to load viewer count');
+        if (pathDetailState !== state || currentPage !== 'path-detail') return;
+
+        const data = response.data || {};
+        const count = Number.isFinite(data.viewer_count) ? data.viewer_count : 0;
+        document.getElementById('path-detail-viewer-count').textContent = formatNumber(count);
+        document.getElementById('path-detail-viewer-status').textContent =
+            data.status === 'unavailable'
+                ? 'Statistik sementara tidak tersedia.'
+                : data.status === 'inactive'
+                    ? 'Stream belum aktif.'
+                    : 'Diperbarui otomatis setiap 5 detik.';
+        if (data.status !== 'unavailable' && Array.isArray(data.viewer_history)) {
+            renderViewerChart(data.viewer_history);
+        }
+    } catch (error) {
+        if (pathDetailState !== state || currentPage !== 'path-detail') return;
+        document.getElementById('path-detail-viewer-count').textContent = '0';
+        document.getElementById('path-detail-viewer-status').textContent = 'Statistik sementara tidak tersedia.';
+        console.warn(`Stream viewer count: ${error.message}`);
+    } finally {
+        state.viewerRefreshInFlight = false;
+    }
+}
+
+function renderViewerChart(data) {
+    const svg = document.getElementById('path-detail-viewer-chart');
+    if (!svg || !Array.isArray(data) || data.length === 0) return;
+
+    const width = svg.clientWidth || 600;
+    const height = 160;
+    const left = 42;
+    const right = 8;
+    const top = 10;
+    const bottom = 10;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const maxValue = Math.max(...data, 1);
+    const ticks = [...new Set([Math.ceil(maxValue), Math.floor(Math.ceil(maxValue) / 2), 0])];
+    const points = data.map((value, index) => {
+        const x = left + (index / Math.max(data.length - 1, 1)) * plotWidth;
+        const y = top + plotHeight - (value / Math.ceil(maxValue)) * plotHeight;
+        return { x, y };
+    });
+    const linePath = `M${points.map(point => `${point.x},${point.y}`).join(' L')}`;
+    const areaPath = `${linePath} L${points[points.length - 1].x},${top + plotHeight} L${points[0].x},${top + plotHeight} Z`;
+
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.innerHTML = `
+        <defs>
+            <linearGradient id="viewer-chart-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2563eb" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="#2563eb" stop-opacity="0"/>
+            </linearGradient>
+        </defs>
+        ${ticks.map(value => {
+            const y = top + plotHeight - (value / Math.ceil(maxValue)) * plotHeight;
+            return `
+                <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>
+                <text x="${left - 8}" y="${y + 4}" text-anchor="end" fill="#6b7280" font-size="11">${formatNumber(value)}</text>
+            `;
+        }).join('')}
+        <path d="${areaPath}" fill="url(#viewer-chart-gradient)"/>
+        <path d="${linePath}" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${points[points.length - 1].x}" cy="${points[points.length - 1].y}" r="3" fill="#2563eb"/>
+    `;
 }
 
 function showPathNotice(message, type = 'success') {
@@ -1347,7 +1498,7 @@ function openPathModal(path = null) {
     form.reset();
     editingPathName = null;
 
-    // Reset field visibility
+
     updateSourceTypeFields('publisher');
 
     if (path) {
@@ -1359,7 +1510,7 @@ function openPathModal(path = null) {
         nameInput.value = path.name;
         nameInput.disabled = true;
 
-        // Determine source type from existing path data
+
         let sourceType = 'publisher';
         if (path.source_redirect) {
             sourceType = 'redirect';
@@ -1370,9 +1521,9 @@ function openPathModal(path = null) {
         document.getElementById('path-source-type').value = sourceType;
         updateSourceTypeFields(sourceType);
 
-        // Fill in the fields
+
         if (path.source) {
-            // Only fill source if it's not a masked password URL
+
             const sourceInput = document.querySelector('input[name="source"]');
             if (!path.source.includes(':***@')) {
                 sourceInput.value = path.source;
@@ -1412,19 +1563,19 @@ function updateSourceTypeFields(sourceType) {
     const onDemandCloseField = document.getElementById('on-demand-close-field');
     const sourceOnDemandCheckbox = document.getElementById('source_on_demand');
 
-    // Guard: elements may not exist if modal not yet rendered
+
     if (!sourceUrlField || !redirectTargetField || !onDemandFieldset || !sourceOnDemandCheckbox) {
         return;
     }
 
-    // Hide all conditional fields first
+
     sourceUrlField.classList.add('hidden');
     redirectTargetField.classList.add('hidden');
     onDemandFieldset.classList.add('hidden');
     if (onDemandTimeoutField) onDemandTimeoutField.classList.add('hidden');
     if (onDemandCloseField) onDemandCloseField.classList.add('hidden');
 
-    // Remove required attributes
+
     sourceUrlField.querySelector('input')?.removeAttribute('required');
     redirectTargetField.querySelector('input')?.removeAttribute('required');
 
@@ -1433,7 +1584,7 @@ function updateSourceTypeFields(sourceType) {
         sourceUrlField.querySelector('input')?.setAttribute('required', 'true');
         onDemandFieldset.classList.remove('hidden');
 
-        // Show/hide timeout fields based on checkbox
+
         if (sourceOnDemandCheckbox.checked) {
             if (onDemandTimeoutField) onDemandTimeoutField.classList.remove('hidden');
             if (onDemandCloseField) onDemandCloseField.classList.remove('hidden');
@@ -1442,10 +1593,10 @@ function updateSourceTypeFields(sourceType) {
         redirectTargetField.classList.remove('hidden');
         redirectTargetField.querySelector('input')?.setAttribute('required', 'true');
     }
-    // For publisher, no extra fields needed
+
 }
 
-// Event listeners for modal fields (initialized after DOM ready)
+
 function initAmsImport() {
     const button = document.getElementById('import-ams-btn');
     const fileInput = document.getElementById('import-ams-file');
@@ -1537,7 +1688,7 @@ window.editPath = async function(name) {
 let editingConfigPathName = null;
 
 function openConfigPathModal(path = null) {
-    // Reuse the same modal but with config-paths context
+
     const modal = document.getElementById('add-path-modal');
     const form = document.getElementById('add-path-form');
     const title = document.getElementById('path-modal-title');
@@ -1546,7 +1697,7 @@ function openConfigPathModal(path = null) {
     form.reset();
     editingConfigPathName = null;
 
-    // Reset field visibility
+
     updateSourceTypeFields('publisher');
 
     if (path) {
@@ -1558,7 +1709,7 @@ function openConfigPathModal(path = null) {
         nameInput.value = path.name;
         nameInput.disabled = true;
 
-        // Determine source type from existing path data
+
         let sourceType = 'publisher';
         if (path.source_redirect) {
             sourceType = 'redirect';
@@ -1569,7 +1720,7 @@ function openConfigPathModal(path = null) {
         document.getElementById('path-source-type').value = sourceType;
         updateSourceTypeFields(sourceType);
 
-        // Fill in the fields
+
         if (path.source && !path.source.includes(':***@')) {
             document.querySelector('input[name="source"]').value = path.source;
         }
@@ -1622,12 +1773,12 @@ function getNestedValue(obj, path) {
 }
 
 function parseFormValue(name, value) {
-    // Handle special types
+
     if (name === 'logDestinations' || name === 'rtspTransports' || name === 'api.trustedProxies' || name === 'api.corsOrigin') {
         if (name === 'api.trustedProxies' || name === 'api.corsOrigin') {
             return value.split(',').map(s => s.trim()).filter(Boolean);
         }
-        return value; // already array from multi-select
+        return value;
     }
     if (value === 'true') return true;
     if (value === 'false') return false;
@@ -1643,10 +1794,10 @@ async function loadConfigGlobal() {
         if (res.success) {
             originalConfig = res.data;
 
-            // Populate form fields
+
             populateConfigGlobalForm(res.data);
 
-            // Populate JSON editor
+
             document.getElementById('config-global-editor').value = JSON.stringify(res.data, null, 2);
             document.getElementById('config-global-form-status').classList.add('hidden');
             document.getElementById('config-global-json-status').classList.add('hidden');
@@ -1663,7 +1814,7 @@ function populateConfigGlobalForm(config) {
     const form = document.querySelector('#page-config-global');
     if (!form) return;
 
-    // Simple fields
+
     const simpleFields = [
         'logLevel', 'logFormat', 'readTimeout', 'writeTimeout', 'readHeaderTimeout',
         'rtspAddress', 'rtmpAddress', 'hlsAddress', 'webrtcAddress', 'srtAddress', 'playbackAddress',
@@ -1681,7 +1832,7 @@ function populateConfigGlobalForm(config) {
                 if (el.type === 'checkbox') {
                     el.checked = value;
                 } else if (el.multiple) {
-                    // multi-select handled separately
+
                 } else {
                     el.value = value;
                 }
@@ -1689,7 +1840,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-    // Multi-select fields (checkbox cards)
+
     ['logDestinations', 'rtspTransports'].forEach(name => {
         const checkboxes = form.querySelectorAll(`[name="${name}"][type="checkbox"]`);
         const value = getNestedValue(config, name);
@@ -1700,7 +1851,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-    // Nested API fields
+
     const apiFields = ['enabled', 'address', 'encryption', 'authentication', 'trustedProxies', 'corsOrigin'];
     apiFields.forEach(name => {
         const el = form.querySelector(`[name="api.${name}"]`);
@@ -1720,7 +1871,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-    // Metrics
+
     ['metrics.enabled', 'metrics.address', 'metrics.encryption'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el) {
@@ -1731,7 +1882,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-    // PPROF
+
     ['pprof.enabled', 'pprof.address'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el) {
@@ -1742,7 +1893,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-    // WebRTC encryption
+
     const webrtcEncEl = form.querySelector('[name="webrtcEncryption"]');
     if (webrtcEncEl) {
         const value = getNestedValue(config, 'webrtcEncryption');
@@ -1751,7 +1902,7 @@ function populateConfigGlobalForm(config) {
         }
     }
 
-    // SRT encryption
+
     const srtEncEl = form.querySelector('[name="srtEncryption"]');
     if (srtEncEl) {
         const value = getNestedValue(config, 'srtEncryption');
@@ -1760,7 +1911,7 @@ function populateConfigGlobalForm(config) {
         }
     }
 
-    // HLS encryption
+
     const hlsEncEl = form.querySelector('[name="hlsEncryption"]');
     if (hlsEncEl) {
         const value = getNestedValue(config, 'hlsEncryption');
@@ -1784,15 +1935,15 @@ function collectConfigGlobalForm() {
         }
     }
 
-    // Handle multi-selects (checkbox cards)
+
     ['logDestinations', 'rtspTransports'].forEach(name => {
         const checkboxes = form.querySelectorAll(`[name="${name}"][type="checkbox"]`);
         const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-        // Always set the value, even if empty array, to allow clearing the setting
+
         setNestedValue(updates, name, selected);
     });
 
-    // Handle comma-separated fields
+
     ['api.trustedProxies', 'api.corsOrigin'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el && el.value.trim()) {
@@ -1871,7 +2022,7 @@ async function saveConfigGlobalJSON() {
 
             setTimeout(function() {
                 console.log('Mengeksekusi location.reload()...');
-                window.location.reload(true); // Parameter true memaksa reload dari server (bypass cache)
+                window.location.reload(true);
             }, 1500);
 
         } else {
@@ -1938,7 +2089,7 @@ form?.addEventListener('submit', async (e) => {
     const name = fd.get('name');
     const sourceType = fd.get('source_type');
 
-    // Build payload based on source type
+
     const payload = {
         name,
         source_type: sourceType,
@@ -1966,9 +2117,9 @@ form?.addEventListener('submit', async (e) => {
         }
         payload.source_redirect = redirectTarget;
     }
-    // For publisher, no source needed
 
-    // Common optional fields
+
+
     const maxReaders = fd.get('max_readers');
     if (maxReaders !== '' && maxReaders !== null) {
         const val = parseInt(maxReaders, 10);
@@ -1987,12 +2138,12 @@ form?.addEventListener('submit', async (e) => {
         const editingName = editingPathName || editingConfigPathName;
 
         if (isEditing) {
-            // Edit existing path - don't send name, and don't send source if it wasn't changed (to preserve masked passwords)
+
             const editPayload = { ...payload };
             delete editPayload.name;
             delete editPayload.source_type;
 
-            // If source is a masked password, don't send it
+
             if (containsMaskedCredentials(editPayload.source)) {
                 delete editPayload.source;
             }
@@ -2008,7 +2159,7 @@ form?.addEventListener('submit', async (e) => {
                 body: JSON.stringify(editPayload),
             });
         } else {
-            // Add new path
+
             await fetchAPI('/paths', {
                 method: 'POST',
                 body: JSON.stringify(payload),
@@ -2030,21 +2181,18 @@ form?.addEventListener('submit', async (e) => {
     }
 });
 
-// Paths search
-// Handled by bindPageEvents
-
-// Config Global buttons
-// Handled by bindPageEvents
-
 // --- Config Paths ---
 
 let allConfigPaths = [];
+let configPathsCurrentPage = 1;
+const CONFIG_PATHS_PER_PAGE = 10;
 
 async function loadConfigPaths() {
     try {
         const paths = await fetchAPI('/paths');
         if (paths.success) {
-            allConfigPaths = paths.data.items;
+            allConfigPaths = paths.data.items || [];
+            configPathsCurrentPage = 1;
             renderConfigPaths(allConfigPaths);
         }
         setConnectionStatus(true);
@@ -2059,16 +2207,21 @@ function renderConfigPaths(paths) {
     const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
 
     const filtered = paths.filter(p =>
-        p.name.toLowerCase().includes(searchTerm) ||
-        (p.source && p.source.toLowerCase().includes(searchTerm)) ||
-        (p.fallback && p.fallback.toLowerCase().includes(searchTerm)) ||
-        (p.source_redirect && p.source_redirect.toLowerCase().includes(searchTerm))
+        [p.name, p.source, p.fallback, p.source_redirect]
+            .some(value => String(value || '').toLowerCase().includes(searchTerm))
     );
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / CONFIG_PATHS_PER_PAGE));
+    configPathsCurrentPage = Math.min(configPathsCurrentPage, totalPages);
+    updateConfigPathsPaginationControls(filtered.length, totalPages);
 
     if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-500">No paths found</td></tr>';
         return;
     }
+
+    const startIndex = (configPathsCurrentPage - 1) * CONFIG_PATHS_PER_PAGE;
+    const pagePaths = filtered.slice(startIndex, startIndex + CONFIG_PATHS_PER_PAGE);
 
     const columnsFromHeaders = Array.from(
         tbody.closest('table').querySelectorAll('thead [data-config-path-column]'),
@@ -2078,8 +2231,8 @@ function renderConfigPaths(paths) {
         ? columnsFromHeaders
         : ['name', 'type', 'source', 'fallback', 'on-demand', 'max-readers', 'actions'];
 
-    tbody.innerHTML = filtered.map(p => {
-        // Determine source type for display
+    tbody.innerHTML = pagePaths.map(p => {
+
         let sourceType = 'Publisher';
         let sourceDisplay = '(publisher)';
         if (p.source_redirect) {
@@ -2120,6 +2273,35 @@ function renderConfigPaths(paths) {
             </tr>
         `;
     }).join('');
+}
+
+function updateConfigPathsPaginationControls(totalFiltered, totalPages) {
+    const prevButton = document.getElementById('config-paths-prev-page');
+    const nextButton = document.getElementById('config-paths-next-page');
+    const pageInfo = document.getElementById('config-paths-page-info');
+
+    if (!prevButton || !nextButton || !pageInfo) return;
+
+    prevButton.disabled = totalFiltered === 0 || configPathsCurrentPage <= 1;
+    nextButton.disabled = totalFiltered === 0 || configPathsCurrentPage >= totalPages;
+    pageInfo.textContent = totalFiltered === 0
+        ? 'Page 0 of 0'
+        : `Page ${configPathsCurrentPage} of ${totalPages}`;
+}
+
+function changeConfigPathsPage(delta) {
+    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
+    const filtered = allConfigPaths.filter(path =>
+        [path.name, path.source, path.fallback, path.source_redirect]
+            .some(value => String(value || '').toLowerCase().includes(searchTerm))
+    );
+    const totalPages = Math.max(1, Math.ceil(filtered.length / CONFIG_PATHS_PER_PAGE));
+    const nextPage = Math.max(1, Math.min(totalPages, configPathsCurrentPage + delta));
+
+    if (nextPage !== configPathsCurrentPage) {
+        configPathsCurrentPage = nextPage;
+        renderConfigPaths(allConfigPaths);
+    }
 }
 
 function exportConfigPaths() {
@@ -3060,7 +3242,7 @@ function changeLogsPage(delta) {
     }
 }
 
-let logsDeleteMode = null; // 'week', 'month', or 'custom'
+let logsDeleteMode = null;
 let logsCustomStart = null;
 let logsCustomEnd = null;
 
@@ -3106,11 +3288,11 @@ function handleDeletePreset(preset) {
 function openCustomPeriodModal() {
     const modal = document.getElementById('logs-custom-modal');
     modal.classList.remove('hidden');
-    // Set default end time to 48 hours ago (the cutoff)
+
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const endInput = document.getElementById('logs-custom-end');
     endInput.value = formatDatetimeLocal(cutoff);
-    // Set default start time to 7 days before cutoff
+
     const startDefault = new Date(cutoff.getTime() - 7 * 24 * 60 * 60 * 1000);
     document.getElementById('logs-custom-start').value = formatDatetimeLocal(startDefault);
 }
@@ -3148,8 +3330,6 @@ async function confirmCustomPeriodDelete() {
     deleteLogs({ start: start.toISOString(), end: end.toISOString() });
 }
 
-// Fragment-specific controls are registered by bindPageEvents() after loading.
-
 // --- Auto Refresh ---
 
 function startAutoRefresh() {
@@ -3178,10 +3358,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initPathModalEvents();
     initTooltips();
 
-    // Handle hash changes
+
     window.addEventListener('hashchange', handleHashChange);
 
-    // Initial page load
+
     const initialPage = getPageFromHash();
     currentRoute = window.location.hash;
     navigateToPage(initialPage, getPathNameFromHash());
@@ -3189,7 +3369,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startAutoRefresh();
 });
 
-// Cleanup on page unload
+
 window.addEventListener('beforeunload', stopAutoRefresh);
 
 function initTooltips() {

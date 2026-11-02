@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import os
 import asyncio
+import secrets
+from datetime import datetime, timedelta
+import jwt
+import httpx
 
 from config import settings
 from deps import get_mediamtx_client
@@ -23,26 +27,26 @@ def read_log_file(path: str, lines: int = 100):
         with open(path, 'r') as f:
             all_lines = f.readlines()
 
-        # Get the last N lines
+
         last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
 
-        # Parse log lines (assuming JSON format or standard log format)
+
         parsed_lines = []
         for line in last_lines:
             line = line.strip()
             if not line:
                 continue
             try:
-                # Try to parse as JSON (MediaMTX structured logs)
+
                 import json
                 log_entry = json.loads(line)
-                # Parse timestamp into a human-readable format if possible
+
                 raw_ts = log_entry.get("timestamp", log_entry.get("time", ""))
                 formatted_ts = raw_ts
                 if raw_ts:
                     try:
                         from datetime import datetime
-                        # Parse ISO8601 string (e.g. 2026-10-28T08:49:59.272353675Z)
+
                         dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
                         formatted_ts = dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
@@ -54,7 +58,7 @@ def read_log_file(path: str, lines: int = 100):
                     "message": log_entry.get("message", log_entry.get("msg", ""))
                 })
             except json.JSONDecodeError:
-                # Fallback: treat as plain text
+
                 parsed_lines.append({
                     "timestamp": "",
                     "level": "",
@@ -67,18 +71,18 @@ def read_log_file(path: str, lines: int = 100):
 
 
 async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
-    """Background task untuk membersihkan file log jika sudah terlalu besar atau terlalu banyak baris."""
+    """Background task untuk membersihkan file log jika sudah terlalu besar atau terlalu banyak baris."an."""
     log_path = settings.LOG_FILE_PATH
     while True:
         try:
             if os.path.exists(log_path):
-                # Cek ukuran file (MB)
+
                 file_size_mb = os.path.getsize(log_path) / (1024 * 1024)
                 with open(log_path, 'r') as f:
                     lines = f.readlines()
 
                 if file_size_mb > max_size_mb or len(lines) > max_lines:
-                    # Ambil hanya N baris terakhir (misal 2000 baris terbaru)
+
                     keep_lines = lines[-2000:]
                     with open(log_path, 'w') as f:
                         f.writelines(keep_lines)
@@ -86,13 +90,13 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
         except Exception as e:
             print(f"[Warning] Gagal membersihkan log: {e}")
 
-        # Cek setiap 6 jam sekali
+
         await asyncio.sleep(6 * 3600)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Jalankan background task pembersih log
+
     clean_task = asyncio.create_task(clean_old_logs())
     yield
     clean_task.cancel()
@@ -115,7 +119,95 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# --- SERVER ROUTES ---
+def create_access_token(data: dict):
+    """Create a JWT access token."""
+    expire = datetime.utcnow() + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    to_encode = {**data, "exp": expire}
+    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm="HS256")
+    return encoded_jwt
+
+
+def decode_access_token(token: str) -> dict:
+    """Decode and validate a JWT access token."""
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def is_api_path(path: str) -> bool:
+    """Check if path is an API path that requires authentication."""
+    return path.startswith("/api/") and not path.startswith("/api/login")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Middleware to require JWT authentication for all API endpoints."""
+    if is_api_path(request.url.path):
+        token = request.cookies.get("access_token")
+        if not token:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated"},
+            )
+        
+        try:
+            decode_access_token(token)
+        except HTTPException as e:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": e.detail},
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid authentication credentials"},
+            )
+    
+    response = await call_next(request)
+    return response
+
+
+@app.post("/api/login")
+async def login(response: Response, username: str = Body(...), password: str = Body(...)):
+    """Login endpoint to authenticate user and create JWT token."""
+    if username != settings.AUTH_USERNAME or password != settings.AUTH_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    if not settings.JWT_SECRET:
+        raise HTTPException(status_code=500, detail="JWT_SECRET not configured")
+    
+    token = create_access_token({"sub": username})
+    
+
+    cookie_kwargs = {
+        "key": "access_token",
+        "value": token,
+        "max_age": settings.JWT_EXPIRE_MINUTES * 60,
+        "httponly": True,
+        "samesite": "Lax",
+    }
+    
+    if settings.JWT_SECURE_COOKIE:
+        cookie_kwargs["secure"] = True
+    
+    response.set_cookie(**cookie_kwargs)
+    
+    return StandardResponse.success({
+        "token": token,
+        "expires_in": settings.JWT_EXPIRE_MINUTES * 60
+    }, "Login successful")
+
+
+@app.post("/api/logout")
+async def logout(response: Response):
+    """Logout endpoint to clear JWT cookie."""
+    response.delete_cookie("access_token")
+    return StandardResponse.success(None, "Logged out successfully")
+
 
 @app.get("/api/server/health")
 async def server_health(client: MediaMTXClient = Depends(get_mediamtx_client)):
@@ -135,7 +227,6 @@ async def patch_server_config(
 ):
     data = await client.patch_server_config(payload)
     return StandardResponse.success(data, "Configuration updated")
-
 
 # --- PATHS ROUTES ---
 
@@ -172,7 +263,7 @@ async def get_path(name: str, client: MediaMTXClient = Depends(get_mediamtx_clie
 async def update_path(
     name: str, payload: PathPatchRequest, client: MediaMTXClient = Depends(get_mediamtx_client)
 ):
-    # Convert to dict, excluding None values
+
     payload_dict = payload.model_dump(exclude_none=True)
     data = await client.update_path(name, payload_dict)
     return StandardResponse.success(data, "Path updated")
@@ -182,7 +273,6 @@ async def update_path(
 async def delete_path(name: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
     await client.delete_path(name)
     return StandardResponse.success(None, "Path deleted")
-
 
 # --- STREAMS ROUTES ---
 
@@ -196,6 +286,16 @@ async def list_streams(client: MediaMTXClient = Depends(get_mediamtx_client)):
 async def streams_summary(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_streams_summary()
     return StandardResponse.success(data, "Streams summary")
+
+
+@app.get("/api/streams/{name:path}/viewers")
+async def stream_viewers(name: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    try:
+        data = await client.get_stream_viewers(name)
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
+        print(f"[Warning] MediaMTX viewer count unavailable ({type(exc).__name__})")
+        data = {"viewer_count": 0, "status": "unavailable"}
+    return StandardResponse.success(data, "Stream viewer count")
 
 
 @app.get("/api/streams/{name:path}")
@@ -220,8 +320,8 @@ async def import_ams_streams(
 
     for stream in streams:
         try:
-            # Mapping AMS -> MediaMTX
-            # Use 'app' as prefix if available to mimic 'applications' grouping
+
+
             raw_name = stream.get("streamId") or stream.get("name")
             if not raw_name:
                 continue
@@ -231,7 +331,7 @@ async def import_ams_streams(
             source = stream.get("streamUrl")
             source_on_demand = bool(stream.get("autoStartStopEnabled", True))
 
-            # MediaMTX add path
+
             await client.create_path(
                 name=full_name,
                 source=source,
@@ -267,7 +367,6 @@ async def kick_session(
     data = await client.kick_session(type, id)
     return StandardResponse.success(data, "Session kicked")
 
-
 # --- PATH DEFAULTS ROUTES ---
 
 @app.get("/api/config/path-defaults")
@@ -282,7 +381,6 @@ async def patch_path_defaults(
 ):
     data = await client.patch_path_defaults(payload)
     return StandardResponse.success(data, "Path defaults updated")
-
 
 # --- RUNTIME ROUTES ---
 
@@ -327,7 +425,6 @@ async def get_metrics(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_metrics()
     return StandardResponse.success({"metrics": data}, "Metrics retrieved")
 
-
 # --- SYSTEM MONITOR ROUTES ---
 
 @app.get("/api/system/metrics")
@@ -335,7 +432,6 @@ async def get_system_metrics():
     monitor = get_system_monitor()
     data = await monitor.get_system_metrics()
     return StandardResponse.success(data, "System metrics retrieved")
-
 
 # --- LOGS ROUTES ---
 
@@ -347,7 +443,7 @@ async def read_logs(
     return StandardResponse.success(data, "Logs retrieved")
 
 
-# 48-hour safety cutoff in seconds
+
 LOG_SAFETY_CUTOFF_SECONDS = 48 * 60 * 60
 
 
@@ -359,7 +455,7 @@ def parse_log_timestamp(line):
         raw_ts = log_entry.get("timestamp", log_entry.get("time", ""))
         if raw_ts:
             from datetime import datetime
-            # Parse ISO8601 string (e.g. 2026-10-28T08:49:59.272353675Z)
+
             return datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
     except Exception:
         pass
@@ -369,7 +465,7 @@ def parse_log_timestamp(line):
 def is_within_safety_window(timestamp):
     """Check if a timestamp is within the 48-hour safety window."""
     if timestamp is None:
-        return True  # Protect entries with unparseable/missing timestamps
+        return True
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     age = (now - timestamp).total_seconds()
@@ -379,11 +475,11 @@ def is_within_safety_window(timestamp):
 def should_delete_entry(timestamp, start=None, end=None):
     """Determine if a log entry should be deleted based on timestamp and optional range."""
     if timestamp is None:
-        return False  # Never delete entries with unparseable/missing timestamps
-    # Check safety window
+        return False
+
     if is_within_safety_window(timestamp):
         return False
-    # Check custom range if provided
+
     if start is not None and timestamp < start:
         return False
     if end is not None and timestamp > end:
@@ -463,7 +559,7 @@ async def clear_logs():
     try:
         if not os.path.exists(log_path):
             return StandardResponse.error(f"Log file not found: {log_path}")
-        # Truncate the file by opening in write mode
+
         with open(log_path, 'w') as f:
             pass
         return StandardResponse.success(None, "Log file cleared successfully")
@@ -482,15 +578,15 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
                     lines = f.readlines()
 
                 if file_size_mb > max_size_mb or len(lines) > max_lines:
-                    # Apply safety filter first - never delete entries within 48 hours
+
                     kept_lines, deleted_count = filter_log_lines(lines)
                     
-                    # If still too large after safety filter, keep only the newest entries
-                    # but still respect the safety cutoff
+
+
                     if len(kept_lines) > max_lines:
-                        # We need to keep the newest max_lines entries, but don't remove protected ones
-                        # Find the cutoff point that keeps max_lines while preserving safety window
-                        # For simplicity, if still too large, keep newest max_lines (which includes protected)
+
+
+
                         kept_lines = kept_lines[-max_lines:]
                         deleted_count = len(lines) - len(kept_lines)
                     
@@ -502,12 +598,25 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
 
         await asyncio.sleep(6 * 3600)
 
-
 # --- FRONTEND ---
 
 @app.get("/")
-async def root():
+async def root(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+
+    try:
+        decode_access_token(token)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+
     return FileResponse("static/index.html")
+
+
+@app.get("/login", include_in_schema=False)
+async def login_page():
+    return FileResponse("static/login.html")
 
 
 if __name__ == "__main__":

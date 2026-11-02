@@ -1,4 +1,4 @@
-# Mock data for USE_MOCK=true
+
 
 MOCK_PATHS = {
     "cam-1": {

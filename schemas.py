@@ -2,11 +2,7 @@ import re
 from typing import Optional
 from pydantic import BaseModel, field_validator
 
-
 # --- Common ---
-
-# (Moved to responses.py)
-
 
 # --- Server ---
 
@@ -23,12 +19,9 @@ class ServerConfigResponse(BaseModel):
 
 class ServerConfigPatch(BaseModel):
     log_level: Optional[str] = None
-    # Add more mutable fields as needed
-
 
 # --- Paths ---
 
-# Duration format regex (e.g., 10s, 30s, 1m, 1h, 1m30s)
 DURATION_PATTERN = re.compile(r'^(\d+h)?(\d+m)?(\d+s)?$')
 
 
@@ -102,7 +95,7 @@ class PathDetailResponse(BaseModel):
     @classmethod
     def mask_password(cls, v: Optional[str]) -> Optional[str]:
         if v and "@" in v and "://" in v:
-            # rtsp://user:pass@host -> rtsp://user:***@host
+
             parts = v.split("@")
             if len(parts) == 2:
                 auth = parts[0]
@@ -114,7 +107,6 @@ class PathDetailResponse(BaseModel):
 
 class PathListResponse(BaseModel):
     items: list[PathDetailResponse]
-
 
 # --- Streams ---
 
@@ -139,12 +131,11 @@ class StreamSummaryResponse(BaseModel):
     total_bytes_received: int
     total_bytes_sent: int
 
-
 # --- Sessions ---
 
 class SessionDetailResponse(BaseModel):
     id: str
-    type: str  # rtsp, rtmp, hls, webrtc, srt
+    type: str
     path: str
     remote_addr: str
     bytes_received: int = 0
