@@ -3337,7 +3337,7 @@ function startAutoRefresh() {
     refreshInterval = setInterval(() => {
         if (currentPage === 'path-detail') {
             refreshPathRuntime();
-        } else if (currentPage !== 'config-global') {
+        } else if (currentPage !== 'config-global' && currentPage !== 'config-paths') {
             loadPageData(currentPage);
         }
     }, 5000);
