@@ -65,6 +65,7 @@ Mode host menjalankan dashboard dan Node Exporter di host network. Mode ini mema
 | PATCH | `/api/config/path-defaults` | Mengubah konfigurasi default path di runtime MediaMTX |
 | GET | `/api/streams` | Daftar stream: online/offline, penonton, trafik, URL tonton |
 | GET | `/api/streams/summary` | Angka ringkas untuk kartu statistik |
+| GET | `/api/streams/{name}/viewers` | Jumlah pembaca lintas protokol dan 60 sampel riwayat; polling halaman detail setiap 5 detik |
 | GET | `/api/streams/{name}` | Detail satu stream |
 | GET | `/api/paths` | Daftar konfigurasi path |
 | POST | `/api/paths` | Tambah path/kamera |

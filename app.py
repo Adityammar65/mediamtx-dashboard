@@ -8,6 +8,7 @@ import asyncio
 import secrets
 from datetime import datetime, timedelta
 import jwt
+import httpx
 
 from config import settings
 from deps import get_mediamtx_client
@@ -285,6 +286,16 @@ async def list_streams(client: MediaMTXClient = Depends(get_mediamtx_client)):
 async def streams_summary(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_streams_summary()
     return StandardResponse.success(data, "Streams summary")
+
+
+@app.get("/api/streams/{name:path}/viewers")
+async def stream_viewers(name: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    try:
+        data = await client.get_stream_viewers(name)
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
+        print(f"[Warning] MediaMTX viewer count unavailable ({type(exc).__name__})")
+        data = {"viewer_count": 0, "status": "unavailable"}
+    return StandardResponse.success(data, "Stream viewer count")
 
 
 @app.get("/api/streams/{name:path}")

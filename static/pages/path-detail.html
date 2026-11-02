@@ -25,7 +25,7 @@
     <div id="path-detail-error" class="hidden rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700"></div>
 
     <div id="path-detail-content" class="space-y-6">
-        <section class="grid grid-cols-1 gap-4 md:grid-cols-3" aria-label="Path summary">
+        <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Path summary">
             <article class="rounded-xl border border-gray-200 bg-white p-5">
                 <p class="text-sm font-medium text-gray-500">Path Name</p>
                 <p id="path-detail-summary-name" class="mt-2 break-all font-mono text-lg font-semibold text-gray-900">-</p>
@@ -39,6 +39,25 @@
                 <p class="text-sm font-medium text-gray-500">Source Type</p>
                 <p id="path-detail-summary-source" class="mt-2 text-lg font-semibold text-gray-900">-</p>
             </article>
+            <article class="rounded-xl border border-gray-200 bg-white p-5" aria-live="polite">
+                <p class="text-sm font-medium text-gray-500">Penonton Aktif</p>
+                <p id="path-detail-viewer-count" class="mt-2 text-2xl font-semibold text-gray-900">-</p>
+                <p id="path-detail-viewer-status" class="mt-1 text-xs text-gray-500">Memuat jumlah penonton...</p>
+            </article>
+        </section>
+
+        <section class="rounded-xl border border-gray-200 bg-white p-5 sm:p-6" aria-label="Viewer history">
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Grafik Penonton</h3>
+                <p class="mt-1 text-sm text-gray-500">Maksimal 60 sampel terakhir, diperbarui setiap 5 detik saat halaman dibuka.</p>
+            </div>
+            <div class="relative h-40" aria-label="Grafik riwayat jumlah penonton">
+                <svg id="path-detail-viewer-chart" class="h-full w-full" role="img" aria-label="Grafik jumlah penonton aktif"></svg>
+            </div>
+            <div class="mt-2 flex justify-between text-xs text-gray-400">
+                <span>Sampel terlama</span>
+                <span>Sampel terbaru</span>
+            </div>
         </section>
 
         <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-5">

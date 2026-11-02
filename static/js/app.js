@@ -1049,6 +1049,7 @@ async function loadPathDetail(pathName) {
         outputUrls: [],
     };
     renderPathDetail();
+    refreshPathViewers();
     setConnectionStatus(true);
     if (!runtimeAvailable) {
         showPathNotice(`Configuration is available, but runtime status could not be loaded: ${pathDetailState.runtimeError}`, 'warning');
@@ -1238,6 +1239,7 @@ function renderPathOutputRows(outputs) {
 async function refreshPathRuntime() {
     if (!pathDetailState) return;
     const state = pathDetailState;
+    refreshPathViewers(state);
     try {
         const response = await fetchAPI(`/streams/${encodeURIComponent(state.name)}`);
         if (!response.success) throw new Error(response.message || 'Failed to load runtime path');
@@ -1257,6 +1259,79 @@ async function refreshPathRuntime() {
         showError(`path runtime: ${error.message}`);
         setConnectionStatus(false);
     }
+}
+
+async function refreshPathViewers(state = pathDetailState) {
+    if (!state || state.viewerRefreshInFlight || currentPage !== 'path-detail') return;
+    state.viewerRefreshInFlight = true;
+    try {
+        const response = await fetchAPI(`/streams/${encodePathSegments(state.name)}/viewers`);
+        if (!response.success) throw new Error(response.message || 'Failed to load viewer count');
+        if (pathDetailState !== state || currentPage !== 'path-detail') return;
+
+        const data = response.data || {};
+        const count = Number.isFinite(data.viewer_count) ? data.viewer_count : 0;
+        document.getElementById('path-detail-viewer-count').textContent = formatNumber(count);
+        document.getElementById('path-detail-viewer-status').textContent =
+            data.status === 'unavailable'
+                ? 'Statistik sementara tidak tersedia.'
+                : data.status === 'inactive'
+                    ? 'Stream belum aktif.'
+                    : 'Diperbarui otomatis setiap 5 detik.';
+        if (data.status !== 'unavailable' && Array.isArray(data.viewer_history)) {
+            renderViewerChart(data.viewer_history);
+        }
+    } catch (error) {
+        if (pathDetailState !== state || currentPage !== 'path-detail') return;
+        document.getElementById('path-detail-viewer-count').textContent = '0';
+        document.getElementById('path-detail-viewer-status').textContent = 'Statistik sementara tidak tersedia.';
+        console.warn(`Stream viewer count: ${error.message}`);
+    } finally {
+        state.viewerRefreshInFlight = false;
+    }
+}
+
+function renderViewerChart(data) {
+    const svg = document.getElementById('path-detail-viewer-chart');
+    if (!svg || !Array.isArray(data) || data.length === 0) return;
+
+    const width = svg.clientWidth || 600;
+    const height = 160;
+    const left = 42;
+    const right = 8;
+    const top = 10;
+    const bottom = 10;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const maxValue = Math.max(...data, 1);
+    const ticks = [...new Set([Math.ceil(maxValue), Math.floor(Math.ceil(maxValue) / 2), 0])];
+    const points = data.map((value, index) => {
+        const x = left + (index / Math.max(data.length - 1, 1)) * plotWidth;
+        const y = top + plotHeight - (value / Math.ceil(maxValue)) * plotHeight;
+        return { x, y };
+    });
+    const linePath = `M${points.map(point => `${point.x},${point.y}`).join(' L')}`;
+    const areaPath = `${linePath} L${points[points.length - 1].x},${top + plotHeight} L${points[0].x},${top + plotHeight} Z`;
+
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.innerHTML = `
+        <defs>
+            <linearGradient id="viewer-chart-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2563eb" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="#2563eb" stop-opacity="0"/>
+            </linearGradient>
+        </defs>
+        ${ticks.map(value => {
+            const y = top + plotHeight - (value / Math.ceil(maxValue)) * plotHeight;
+            return `
+                <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>
+                <text x="${left - 8}" y="${y + 4}" text-anchor="end" fill="#6b7280" font-size="11">${formatNumber(value)}</text>
+            `;
+        }).join('')}
+        <path d="${areaPath}" fill="url(#viewer-chart-gradient)"/>
+        <path d="${linePath}" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${points[points.length - 1].x}" cy="${points[points.length - 1].y}" r="3" fill="#2563eb"/>
+    `;
 }
 
 function showPathNotice(message, type = 'success') {

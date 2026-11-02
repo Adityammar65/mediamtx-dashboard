@@ -1,6 +1,7 @@
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 import asyncio
 import time
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,16 @@ _SENSITIVE_QUERY_KEYS = {
     "secret",
     "token",
 }
+
+_PROTOCOL_READER_KEYS = (
+    "hlsMuxers",
+    "rtspSessions",
+    "rtspConns",
+    "rtmpConns",
+    "webrtcSessions",
+    "webrtcConns",
+    "srtConns",
+)
 
 
 def _mask_sensitive_url(value):
@@ -57,6 +68,7 @@ def _mask_path_config(config):
 
 class MediaMTXClient:
     _instance = None
+    _viewer_history = {}
 
 
     _cache_lock = asyncio.Lock()
@@ -444,9 +456,51 @@ class MediaMTXClient:
             "name": data.get("name"),
             "ready": data.get("ready"),
             "tracks": data.get("tracks") or [],
-            "readers": len(data.get("readers", [])) if isinstance(data.get("readers"), list) else 0,
+            "readers": self._count_path_readers(data),
             "bytes_received": data.get("bytesReceived", 0),
             "bytes_sent": data.get("bytesSent", 0)
+        }
+
+    @staticmethod
+    def _count_path_readers(data):
+        protocol_reader_count = sum(
+            len(data[key])
+            for key in _PROTOCOL_READER_KEYS
+            if isinstance(data.get(key), list)
+        )
+        if protocol_reader_count:
+            return protocol_reader_count
+
+        readers = data.get("readers")
+        return len(readers) if isinstance(readers, list) else 0
+
+    async def get_stream_viewers(self, name):
+        encoded_name = quote(name, safe="")
+        response = await self.client.get(
+            f"{self.base_url}/paths/get/{encoded_name}",
+            timeout=3.0,
+        )
+        if response.status_code == 404:
+            history = MediaMTXClient._viewer_history.setdefault(name, deque(maxlen=60))
+            history.append(0)
+            return {
+                "viewer_count": 0,
+                "status": "inactive",
+                "viewer_history": list(history),
+            }
+
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("MediaMTX returned an invalid path response")
+
+        viewer_count = self._count_path_readers(data)
+        history = MediaMTXClient._viewer_history.setdefault(name, deque(maxlen=60))
+        history.append(viewer_count)
+        return {
+            "viewer_count": viewer_count,
+            "status": "active" if data.get("ready") is True else "inactive",
+            "viewer_history": list(history),
         }
 
     # --- Sessions ---
