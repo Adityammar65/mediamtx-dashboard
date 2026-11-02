@@ -1,12 +1,14 @@
+
 /* Custom styles for MediaMTX Dashboard */
 
 /* Sidebar */
+
 #sidebar {
-    width: 16rem; /* 256px */
+    width: 16rem;
 }
 
 #sidebar.sidebar-collapsed {
-    width: 4rem; /* 64px */
+    width: 4rem;
 }
 
 #main-content {
@@ -34,16 +36,17 @@
 }
 
 /* Sidebar Sections */
+
 .sidebar-section {
     margin-bottom: 0.5rem;
 }
 
 .sidebar-section-title {
-    font-size: 0.625rem; /* 10px */
+    font-size: 0.625rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #9ca3af; /* gray-400 */
+    color: #9ca3af;
     padding: 0.5rem 1rem;
     margin-bottom: 0.25rem;
     white-space: nowrap;
@@ -56,36 +59,37 @@
 }
 
 /* Nav Links */
+
 .nav-link {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    color: #6b7280; /* gray-500 */
+    color: #6b7280;
     text-decoration: none;
     transition: all 0.2s ease;
     white-space: nowrap;
 }
 
 .nav-link:hover {
-    background-color: #f3f4f6; /* gray-100 */
-    color: #1f2937; /* gray-800 */
+    background-color: #f3f4f6;
+    color: #1f2937;
 }
 
 .nav-link.nav-active {
-    background-color: #dbeafe; /* blue-100 */
-    color: #2563eb; /* blue-600 */
+    background-color: #dbeafe;
+    color: #2563eb;
 }
 
 .nav-icon {
     flex-shrink: 0;
-    width: 1.25rem; /* 20px */
+    width: 1.25rem;
     height: 1.25rem;
 }
 
 .nav-label {
-    font-size: 0.875rem; /* 14px */
+    font-size: 0.875rem;
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -100,7 +104,17 @@
     padding: 0.5rem;
 }
 
+#sidebar.sidebar-collapsed .sidebar-footer-label {
+    display: none;
+}
+
+#sidebar.sidebar-collapsed .sidebar-footer button {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
 /* Status Badges */
+
 .status-badge {
     display: inline-flex;
     align-items: center;
@@ -111,16 +125,17 @@
 }
 
 .status-online {
-    background-color: #dcfce7; /* green-100 */
-    color: #166534; /* green-900 */
+    background-color: #dcfce7;
+    color: #166534;
 }
 
 .status-offline {
-    background-color: #fee2e2; /* red-100 */
-    color: #991b1b; /* red-900 */
+    background-color: #fee2e2;
+    color: #991b1b;
 }
 
 /* Buttons */
+
 .btn-icon {
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;
@@ -131,34 +146,36 @@
 }
 
 .btn-danger {
-    background-color: #fee2e2; /* red-100 */
-    color: #991b1b; /* red-900 */
+    background-color: #fee2e2;
+    color: #991b1b;
 }
 
 .btn-danger:hover {
-    background-color: #fecaca; /* red-200 */
+    background-color: #fecaca;
 }
 
 .btn-primary {
-    background-color: #dbeafe; /* blue-100 */
-    color: #2563eb; /* blue-600 */
+    background-color: #dbeafe;
+    color: #2563eb;
 }
 
 .btn-primary:hover {
-    background-color: #bfdbfe; /* blue-200 */
+    background-color: #bfdbfe;
 }
 
 /* Connection Status */
+
 #connection-status {
     font-weight: 500;
 }
 
 /* Tables */
+
 table th {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: #f9fafb; /* gray-50 */
+    background-color: #f9fafb;
 }
 
 tr:hover {
@@ -166,6 +183,7 @@ tr:hover {
 }
 
 /* Page Content */
+
 .page {
     animation: fadeIn 0.2s ease;
 }
@@ -176,6 +194,7 @@ tr:hover {
 }
 
 /* Placeholder Pages */
+
 .placeholder-page {
     display: flex;
     flex-direction: column;
@@ -185,17 +204,18 @@ tr:hover {
     padding: 3rem;
     text-align: center;
     background-color: white;
-    border: 1px solid #e5e7eb; /* gray-200 */
+    border: 1px solid #e5e7eb;
     border-radius: 0.5rem;
 }
 
 .placeholder-icon {
     width: 4rem;
     height: 4rem;
-    color: #d1d5db; /* gray-300 */
+    color: #d1d5db;
 }
 
 /* Config Editor */
+
 #config-global-editor {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     line-height: 1.6;
@@ -204,6 +224,7 @@ tr:hover {
 }
 
 /* Scrollbar */
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -223,6 +244,7 @@ tr:hover {
 }
 
 /* Modal */
+
 #add-path-modal {
     display: none;
 }
@@ -232,6 +254,7 @@ tr:hover {
 }
 
 /* Focus visible for accessibility */
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -240,14 +263,16 @@ select:focus-visible {
     outline: 2px solid #2563eb;
     outline-offset: 2px;
 }
+
 /* System Monitor */
+
 .metric-card {
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .metric-card:hover {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    border-color: #d1d5db; /* gray-300 */
+    border-color: #d1d5db;
 }
 
 .metric-card svg {
@@ -255,11 +280,13 @@ select:focus-visible {
 }
 
 /* Sparkline container */
+
 .relative.h-24 {
     min-height: 96px;
 }
 
 /* Progress bar animation */
+
 .h-2.bg-gray-100 .bg-blue-600,
 .h-2.bg-gray-100 .bg-green-600,
 .h-2.bg-gray-100 .bg-amber-600 {
@@ -267,6 +294,7 @@ select:focus-visible {
 }
 
 /* System monitor unavailable state */
+
 #system-monitor-unavailable {
     animation: slideIn 0.3s ease;
 }
@@ -277,6 +305,7 @@ select:focus-visible {
 }
 
 /* Responsive adjustments for metric cards */
+
 @media (max-width: 640px) {
     .metric-card {
         padding: 1rem;
@@ -292,6 +321,7 @@ select:focus-visible {
 }
 
 /* Loading state */
+
 .opacity-50 {
     opacity: 0.5;
 }
@@ -301,6 +331,7 @@ select:focus-visible {
 }
 
 /* Hidden utility */
+
 .hidden {
     display: none !important;
 }

@@ -2,8 +2,8 @@ import httpx
 import json
 import asyncio
 
-# Sesuaikan dengan URL mediamtx Anda
-# Jika dijalankan dari luar docker, ganti ke http://localhost:9997
+
+
 BASE_URL = "http://mediamtx:9997/v3"
 
 ENDPOINTS = [
