@@ -496,6 +496,11 @@ function bindPageEvents(page) {
             if (button.dataset.pathAction === 'edit') window.editPath(name);
             if (button.dataset.pathAction === 'delete') window.deletePath(name);
         });
+        document.getElementById('streams-search')?.addEventListener('input', () => {
+            streamsCurrentPage = 1;
+            renderStreams(allStreams);
+        });
+        document.getElementById('streams-refresh')?.addEventListener('click', loadStreams);
     }
     if (page === 'path-detail') {
         document.getElementById('path-detail-test')?.addEventListener('click', testPathPreview);
@@ -808,14 +813,32 @@ function renderPaths(paths) {
 function renderStreams(streams) {
     const tbody = document.getElementById('streams-table-body');
     const countEl = document.getElementById('streams-count');
+    const searchTerm = document.getElementById('streams-search')?.value.toLowerCase() || '';
 
-    if (streams.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-500">No active streams</td></tr>';
+    const filtered = streams.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const protocol = (s.type || '').toLowerCase();
+        const remoteAddr = (s.remote_addr || '').toLowerCase();
+        return name.includes(searchTerm) || protocol.includes(searchTerm) || remoteAddr.includes(searchTerm);
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / STREAMS_PER_PAGE));
+    if (streamsCurrentPage > totalPages) {
+        streamsCurrentPage = totalPages;
+    }
+
+    const startIdx = (streamsCurrentPage - 1) * STREAMS_PER_PAGE;
+    const endIdx = startIdx + STREAMS_PER_PAGE;
+    const pageStreams = filtered.slice(startIdx, endIdx);
+
+    if (pageStreams.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-500">No active streams</td></tr>';
         if (countEl) countEl.textContent = '0 streams';
+        updateStreamsPaginationControls(0, 0);
         return;
     }
 
-    tbody.innerHTML = streams.map(s => {
+    tbody.innerHTML = pageStreams.map(s => {
         return `
             <tr class="hover:bg-gray-50">
                 <td class="px-6 py-4 font-mono text-sm">${escapeHtml(s.name)}</td>
@@ -836,7 +859,39 @@ function renderStreams(streams) {
             </tr>
         `;
     }).join('');
-    countEl.textContent = `${streams.length} stream${streams.length !== 1 ? 's' : ''}`;
+    countEl.textContent = `${filtered.length} stream${filtered.length !== 1 ? 's' : ''} (showing ${pageStreams.length})`;
+    updateStreamsPaginationControls(filtered.length, totalPages);
+}
+
+function updateStreamsPaginationControls(totalFiltered, totalPages) {
+    const prevBtn = document.getElementById('streams-prev-page');
+    const nextBtn = document.getElementById('streams-next-page');
+    const pageInfo = document.getElementById('streams-page-info');
+
+    if (!prevBtn || !nextBtn || !pageInfo) return;
+
+    prevBtn.disabled = streamsCurrentPage <= 1;
+    nextBtn.disabled = streamsCurrentPage >= totalPages;
+    pageInfo.textContent = totalFiltered === 0 ? 'Page 0 of 0' : `Page ${streamsCurrentPage} of ${totalPages}`;
+}
+
+function changeStreamsPage(delta) {
+    const searchTerm = document.getElementById('streams-search')?.value.toLowerCase() || '';
+
+    const filtered = allStreams.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const protocol = (s.type || '').toLowerCase();
+        const remoteAddr = (s.remote_addr || '').toLowerCase();
+        return name.includes(searchTerm) || protocol.includes(searchTerm) || remoteAddr.includes(searchTerm);
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / STREAMS_PER_PAGE));
+    const newPage = Math.max(1, Math.min(totalPages, streamsCurrentPage + delta));
+
+    if (newPage !== streamsCurrentPage) {
+        streamsCurrentPage = newPage;
+        renderStreams(allStreams);
+    }
 }
 
 function renderDashboardSessions(sessions) {
@@ -890,18 +945,23 @@ function renderServerConfig(config) {
 // --- Paths ---
 
 let allPaths = [];
+let allStreams = [];
+let streamsCurrentPage = 1;
+const STREAMS_PER_PAGE = 10;
 
 async function loadStreams() {
-      try {
-          const paths = await fetchAPI('/streams');
-          if (paths.success) {
-              allPaths = paths.data.items || [];
-              renderStreams(allPaths);
-          }
-          setConnectionStatus(true);
-      } catch (e) {
-          showError(e.message);
-          setConnectionStatus(false);
+    try {
+        const paths = await fetchAPI('/streams');
+        if (paths.success) {
+            allPaths = paths.data.items || [];
+            allStreams = paths.data.items || [];
+            streamsCurrentPage = 1;
+            renderStreams(allStreams);
+        }
+        setConnectionStatus(true);
+    } catch (e) {
+        showError(e.message);
+        setConnectionStatus(false);
     }
 }
 
