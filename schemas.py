@@ -1,6 +1,6 @@
 import re
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # --- Common ---
 
@@ -34,14 +34,16 @@ def validate_duration(v: Optional[str]) -> Optional[str]:
 
 
 class PathCreateRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     name: str
     source: Optional[str] = None
-    source_on_demand: bool = True
-    source_on_demand_start_timeout: Optional[str] = None
-    source_on_demand_close_after: Optional[str] = None
-    max_readers: Optional[int] = None
+    source_on_demand: bool = Field(default=True, alias="sourceOnDemand")
+    source_on_demand_start_timeout: Optional[str] = Field(default=None, alias="sourceOnDemandStartTimeout")
+    source_on_demand_close_after: Optional[str] = Field(default=None, alias="sourceOnDemandCloseAfter")
+    max_readers: Optional[int] = Field(default=None, alias="maxReaders")
     fallback: Optional[str] = None
-    source_redirect: Optional[str] = None
+    source_redirect: Optional[str] = Field(default=None, alias="sourceRedirect")
 
     @field_validator("max_readers", mode="before")
     @classmethod
@@ -57,13 +59,15 @@ class PathCreateRequest(BaseModel):
 
 
 class PathPatchRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     source: Optional[str] = None
-    source_on_demand: Optional[bool] = None
-    source_on_demand_start_timeout: Optional[str] = None
-    source_on_demand_close_after: Optional[str] = None
-    max_readers: Optional[int] = None
+    source_on_demand: Optional[bool] = Field(default=None, alias="sourceOnDemand")
+    source_on_demand_start_timeout: Optional[str] = Field(default=None, alias="sourceOnDemandStartTimeout")
+    source_on_demand_close_after: Optional[str] = Field(default=None, alias="sourceOnDemandCloseAfter")
+    max_readers: Optional[int] = Field(default=None, alias="maxReaders")
     fallback: Optional[str] = None
-    source_redirect: Optional[str] = None
+    source_redirect: Optional[str] = Field(default=None, alias="sourceRedirect")
 
     @field_validator("max_readers", mode="before")
     @classmethod

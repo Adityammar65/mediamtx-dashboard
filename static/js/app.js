@@ -2102,12 +2102,12 @@ form?.addEventListener('submit', async (e) => {
             return;
         }
         payload.source = source;
-        payload.source_on_demand = fd.get('source_on_demand') === 'on';
-        if (payload.source_on_demand) {
+        payload.sourceOnDemand = fd.get('source_on_demand') === 'on';
+        if (payload.sourceOnDemand) {
             const startTimeout = fd.get('source_on_demand_start_timeout');
             const closeAfter = fd.get('source_on_demand_close_after');
-            if (startTimeout) payload.source_on_demand_start_timeout = startTimeout;
-            if (closeAfter) payload.source_on_demand_close_after = closeAfter;
+            if (startTimeout) payload.sourceOnDemandStartTimeout = startTimeout;
+            if (closeAfter) payload.sourceOnDemandCloseAfter = closeAfter;
         }
     } else if (sourceType === 'redirect') {
         const redirectTarget = fd.get('source_redirect');
@@ -2115,7 +2115,7 @@ form?.addEventListener('submit', async (e) => {
             alert('Redirect target is required for Redirect type');
             return;
         }
-        payload.source_redirect = redirectTarget;
+        payload.sourceRedirect = redirectTarget;
     }
 
 
@@ -2127,7 +2127,7 @@ form?.addEventListener('submit', async (e) => {
             alert('Max readers must be a non-negative integer');
             return;
         }
-        payload.max_readers = val;
+        payload.maxReaders = val;
     }
 
     const fallback = fd.get('fallback');
@@ -2147,8 +2147,8 @@ form?.addEventListener('submit', async (e) => {
             if (containsMaskedCredentials(editPayload.source)) {
                 delete editPayload.source;
             }
-            if (containsMaskedCredentials(editPayload.source_redirect)) {
-                delete editPayload.source_redirect;
+            if (containsMaskedCredentials(editPayload.sourceRedirect)) {
+                delete editPayload.sourceRedirect;
             }
             if (containsMaskedCredentials(editPayload.fallback)) {
                 delete editPayload.fallback;

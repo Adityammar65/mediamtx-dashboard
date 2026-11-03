@@ -81,9 +81,11 @@ Contoh body untuk menambah kamera IP:
 {
   "name": "kamera-1",
   "source": "rtsp://admin:admin@192.168.1.20:554/stream1",
-  "source_on_demand": true
+  "sourceOnDemand": true
 }
 ```
+
+Field opsional lainnya memakai nama MediaMTX: `sourceOnDemandStartTimeout`, `sourceOnDemandCloseAfter`, `maxReaders`, dan `sourceRedirect`.
 
 Untuk stream yang dikirim dari OBS/FFmpeg, cukup `{"name": "kamera-1"}` (source default `publisher`).
 
@@ -185,9 +187,11 @@ Contoh body untuk menambah kamera IP:
 {
   "name": "kamera-1",
   "source": "rtsp://admin:admin@192.168.1.20:554/stream1",
-  "source_on_demand": true
+  "sourceOnDemand": true
 }
 ```
+
+Field opsional lainnya memakai nama MediaMTX: `sourceOnDemandStartTimeout`, `sourceOnDemandCloseAfter`, `maxReaders`, dan `sourceRedirect`.
 
 Untuk stream yang dikirim dari OBS/FFmpeg, cukup `{"name": "kamera-1"}` (source default `publisher`).
 
