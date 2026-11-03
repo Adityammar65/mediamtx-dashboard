@@ -2336,10 +2336,26 @@ function exportConfigPaths() {
     setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
 }
 
-window.editConfigPath = function(name) {
-    const path = allConfigPaths.find(p => p.name === name);
-    if (path) {
-        openConfigPathModal(path);
+window.editConfigPath = async function(name) {
+    try {
+        const response = await fetchAPI(`/paths/${encodeURIComponent(name)}`);
+        if (!response.success || !response.data) {
+            throw new Error(response.message || 'Unable to load path configuration');
+        }
+
+        const config = response.data;
+        openConfigPathModal({
+            ...config,
+            name,
+            source_on_demand: config.sourceOnDemand,
+            source_on_demand_start_timeout: config.sourceOnDemandStartTimeout,
+            source_on_demand_close_after: config.sourceOnDemandCloseAfter,
+            source_redirect: config.sourceRedirect,
+            max_readers: config.maxReaders,
+        });
+    } catch (e) {
+        showError(e.message);
+        alert(`Failed to load path configuration: ${e.message}`);
     }
 };
 

@@ -292,7 +292,7 @@ class MediaMTXClient:
         if r.status_code == 404:
             raise HTTPException(404, "Path not found")
         r.raise_for_status()
-        await self._queue_save_to_yaml(payload, path_name=name)
+        await self._queue_save_to_yaml(mapped, path_name=name)
         return r.json()
 
     async def delete_path(self, name):
