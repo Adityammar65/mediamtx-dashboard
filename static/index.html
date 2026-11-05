@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>MediaMTX Dashboard</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="/static/css/style.css" />
+    </head>
+    <body class="bg-gray-50 min-h-screen">
+
+        <!-- Sidebar Overlay (Mobile) -->
+
+        <div
+            id="sidebar-overlay"
+            class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden lg:hidden"
+        ></div>
+
+        <!-- Sidebar -->
+
+        <aside
+            id="sidebar"
+            class="fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-all duration-300 lg:translate-x-0"
+        >
+
+            <!-- Sidebar Header -->
+
+            <div
+                class="flex items-center justify-between h-16 px-4 border-b border-gray-200"
+            >
+                <h1
+                    id="sidebar-logo"
+                    class="text-xl font-bold text-gray-900 transition-all duration-300"
+                >
+                    MediaMTX Dashboard
+                </h1>
+                <button
+                    id="sidebar-toggle"
+                    class="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden"
+                    aria-label="Toggle sidebar"
+                >
+                    <svg
+                        class="w-6 h-6 text-gray-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16"
+                        ></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Navigation -->
+
+            <nav class="p-4 space-y-1" aria-label="Main navigation">
+
+                <!-- Overview Section -->
+
+                <div class="sidebar-section">
+                    <h2 class="sidebar-section-title">Overview</h2>
+                    <a href="#dashboard" class="nav-link" data-page="dashboard">
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">Dashboard</span>
+                    </a>
+                    <a href="#streams" class="nav-link" data-page="streams">
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">Streams</span>
+                    </a>
+                </div>
+
+                <!-- Configuration Section -->
+
+                <div class="sidebar-section">
+                    <h2 class="sidebar-section-title">Configuration</h2>
+                    <a
+                        href="#config-global"
+                        class="nav-link"
+                        data-page="config-global"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                            ></path>
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">Global</span>
+                    </a>
+                    <a
+                        href="#config-paths"
+                        class="nav-link"
+                        data-page="config-paths"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">Paths</span>
+                    </a>
+                    <a
+                        href="#config-defaults"
+                        class="nav-link"
+                        data-page="config-defaults"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">Path Defaults</span>
+                    </a>
+                </div>
+
+                <!-- Runtime Section -->
+
+                <div class="sidebar-section">
+                    <h2 class="sidebar-section-title">Runtime</h2>
+                    <a
+                        href="#runtime-hls"
+                        class="nav-link"
+                        data-page="runtime-hls"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">HLS</span>
+                    </a>
+                    <a
+                        href="#runtime-rtsp"
+                        class="nav-link"
+                        data-page="runtime-rtsp"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">RTSP</span>
+                    </a>
+                    <a
+                        href="#runtime-rtmp"
+                        class="nav-link"
+                        data-page="runtime-rtmp"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">RTMP</span>
+                    </a>
+                    <a
+                        href="#runtime-logs"
+                        class="nav-link"
+                        data-page="runtime-logs"
+                    >
+                        <svg
+                            class="nav-icon"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            ></path>
+                        </svg>
+                        <span class="nav-label">Logs</span>
+                    </a>
+                </div>
+            </nav>
+
+            <!-- Sidebar Footer -->
+
+            <div
+                class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 sidebar-footer"
+            >
+                <button
+                    id="logout-btn"
+                    type="button"
+                    class="flex w-full items-center justify-start gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    aria-label="Logout"
+                    title="Logout"
+                >
+                    <svg class="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                    <span class="sidebar-footer-label">Logout</span>
+                </button>
+                <div class="mt-2 text-xs text-gray-500 text-center">
+                    MediaMTX Dashboard v1.0
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+
+        <main
+            id="main-content"
+            class="lg:ml-64 transition-all duration-300 min-h-screen"
+        >
+
+            <!-- Top Header -->
+
+            <header class="sticky top-0 z-30 bg-white border-b border-gray-200">
+                <div
+                    class="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8"
+                >
+                    <div class="flex items-center">
+                        <button
+                            id="mobile-menu-btn"
+                            class="p-2 rounded-lg hover:bg-gray-100 lg:hidden mr-4"
+                            aria-label="Open menu"
+                        >
+                            <svg
+                                class="w-6 h-6 text-gray-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M4 6h16M4 12h16M4 18h16"
+                                ></path>
+                            </svg>
+                        </button>
+                        <h1
+                            id="page-title"
+                            class="text-xl font-bold text-gray-900"
+                        >
+                            Dashboard
+                        </h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span
+                            id="connection-status"
+                            class="text-sm text-gray-500"
+                            >Disconnected</span
+                        >
+                        <button
+                            id="refresh-btn"
+                            class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            aria-label="Refresh data"
+                        >
+                            <svg
+                                class="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                ></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+
+            <div
+                id="page-content"
+                class="p-4 sm:p-6 lg:p-8"
+                aria-live="polite"
+            ></div>
+        </main>
+
+        <!-- Add Path Modal -->
+
+        <div
+            id="add-path-modal"
+            class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"
+        >
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4" id="path-modal-title">
+                        Add New Path
+                    </h3>
+                    <form id="add-path-form">
+                        <div class="mb-4">
+                            <label
+                                class="block text-sm font-medium text-gray-700 mb-1"
+                                >Path Name <span class="text-red-500">*</span></label
+                            >
+                            <input
+                                type="text"
+                                name="name"
+                                required
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Used by clients to access the stream (e.g., camera/front)</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label
+                                class="block text-sm font-medium text-gray-700 mb-1"
+                                >Source Type <span class="text-red-500">*</span></label
+                            >
+                            <select
+                                name="source_type"
+                                id="path-source-type"
+                                required
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="publisher">Publisher (wait for stream)</option>
+                                <option value="url">URL Source (pull from external)</option>
+                                <option value="redirect">Redirect (to another path/URL)</option>
+                            </select>
+                        </div>
+
+                        <!-- Source URL (for URL source type) -->
+
+                        <div class="mb-4" id="source-url-field">
+                            <label
+                                class="block text-sm font-medium text-gray-700 mb-1"
+                                >Source URL <span class="text-red-500">*</span></label
+                            >
+                            <input
+                                type="text"
+                                name="source"
+                                placeholder="rtsp://user:pass@host:554/stream"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">External stream URL. May contain credentials.</p>
+                        </div>
+
+                        <!-- Redirect Target (for Redirect type) -->
+
+                        <div class="mb-4 hidden" id="redirect-target-field">
+                            <label
+                                class="block text-sm font-medium text-gray-700 mb-1"
+                                >Redirect Target <span class="text-red-500">*</span></label
+                            >
+                            <input
+                                type="text"
+                                name="source_redirect"
+                                placeholder="camera/back or rtsp://host:554/stream"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Path name or URL to redirect readers to.</p>
+                        </div>
+
+                        <!-- On-Demand Options (for URL source type) -->
+
+                        <fieldset class="mb-4" id="on-demand-fieldset">
+                            <legend class="text-sm font-medium text-gray-700 mb-2">On-Demand Options</legend>
+                            <div class="mb-3 flex items-center">
+                                <input
+                                    type="checkbox"
+                                    name="source_on_demand"
+                                    id="source_on_demand"
+                                    checked
+                                    class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <label
+                                    for="source_on_demand"
+                                    class="ml-2 text-sm text-gray-700"
+                                    >Source on Demand (open source only when readers exist)</label
+                                >
+                            </div>
+                            <div class="mb-3 ml-6" id="on-demand-timeout-field">
+                                <label
+                                    class="block text-sm font-medium text-gray-700 mb-1"
+                                    >Start Timeout</label
+                                >
+                                <input
+                                    type="text"
+                                    name="source_on_demand_start_timeout"
+                                    placeholder="10s"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p class="text-xs text-gray-500 mt-1">Max time readers wait for source to start (e.g., 10s, 30s, 1m).</p>
+                            </div>
+                            <div class="mb-3 ml-6" id="on-demand-close-field">
+                                <label
+                                    class="block text-sm font-medium text-gray-700 mb-1"
+                                    >Close After</label
+                                >
+                                <input
+                                    type="text"
+                                    name="source_on_demand_close_after"
+                                    placeholder="10s"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p class="text-xs text-gray-500 mt-1">Time to wait after last reader leaves before closing source (e.g., 10s, 1m).</p>
+                            </div>
+                        </fieldset>
+
+                        <!-- Max Readers -->
+
+                        <div class="mb-4">
+                            <label
+                                class="block text-sm font-medium text-gray-700 mb-1"
+                                >Max Readers</label
+                            >
+                            <input
+                                type="number"
+                                name="max_readers"
+                                min="0"
+                                placeholder="0 (unlimited)"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Maximum concurrent readers. 0 = unlimited.</p>
+                        </div>
+
+                        <!-- Fallback -->
+
+                        <div class="mb-4">
+                            <label
+                                class="block text-sm font-medium text-gray-700 mb-1"
+                                >Fallback</label
+                            >
+                            <input
+                                type="text"
+                                name="fallback"
+                                placeholder="camera/fallback or rtsp://host:554/fallback"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Path or URL used when this stream is unavailable.</p>
+                        </div>
+
+                        <div class="flex justify-end space-x-3">
+                            <button
+                                type="button"
+                                id="cancel-path-btn"
+                                class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                id="path-submit-btn"
+                                class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                Add Path
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+        <script src="/static/js/app.js"></script>
+    </body>
+</html>

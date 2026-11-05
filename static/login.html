@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Sign in · MediaMTX Dashboard</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="/static/css/style.css" />
+    </head>
+    <body class="min-h-screen bg-gray-50">
+        <main class="flex min-h-screen items-center justify-center px-4 py-12">
+            <section class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+                <header class="mb-8 text-center">
+                    <h1 class="text-2xl font-bold text-gray-900">MediaMTX Dashboard</h1>
+                    <p class="mt-2 text-sm text-gray-600">Sign in to manage your streams.</p>
+                </header>
+
+                <form id="login-form" class="space-y-5">
+                    <div>
+                        <label for="username" class="mb-1 block text-sm font-medium text-gray-700">Username</label>
+                        <input id="username" name="username" type="text" autocomplete="username" required autofocus
+                            class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                    </div>
+                    <div>
+                        <label for="password" class="mb-1 block text-sm font-medium text-gray-700">Password</label>
+                        <input id="password" name="password" type="password" autocomplete="current-password" required
+                            class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                    </div>
+                    <p id="login-error" class="hidden text-sm text-red-600" role="alert"></p>
+                    <button id="login-submit" type="submit"
+                        class="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
+                        Sign in
+                    </button>
+                </form>
+            </section>
+        </main>
+        <script src="/static/js/login.js"></script>
+    </body>
+</html>

@@ -1,0 +1,48 @@
+services:
+  mediamtx-dashboard:
+    build: .
+    container_name: mediamtx_dashboard_wiko
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./logs:/var/log/mediamtx
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - MEDIAMTX_API_URL=http://mediamtx:9997
+      - LOG_FILE_PATH=/var/log/mediamtx/mediamtx.log
+      - NODE_EXPORTER_URL=http://node-exporter:9100
+    env_file:
+      - .env
+    depends_on:
+      - mediamtx
+      - node-exporter
+    restart: unless-stopped
+
+  mediamtx:
+      image: bluenviron/mediamtx:latest
+      container_name: mediamtx
+      ports:
+        - "8554:8554"   # RTSP
+        - "1935:1935"   # RTMP
+        - "8888:8888"   # HLS
+        - "8889:8889"   # WebRTC / WHEP
+        - "9997:9997"   # API
+        - "8890:8890"   # SRT
+      volumes:
+        - ./mediamtx.yml:/mediamtx.yml
+        - ./logs:/var/log/mediamtx
+        - /etc/localtime:/etc/localtime:ro
+      restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)'
+    pid: host
+    volumes:
+      - '/:/host:ro'
+    restart: unless-stopped

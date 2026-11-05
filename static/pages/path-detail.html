@@ -1,0 +1,123 @@
+<div id="page-path-detail" class="page space-y-6">
+    <div>
+        <nav class="mb-3 text-sm text-gray-500" aria-label="Breadcrumb">
+            <a href="#streams" class="hover:text-blue-600">Path Config</a>
+            <span class="mx-2">/</span>
+            <span class="text-gray-700">Detail Path</span>
+        </nav>
+        <a href="#streams" class="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700">
+            <span aria-hidden="true">&larr;</span>
+            Back to Path Overview
+        </a>
+        <div class="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <span id="path-detail-status" class="status-badge status-offline">Loading</span>
+                <p class="mt-2 text-gray-600">Configuration, runtime status, and available output URLs for this MediaMTX path.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button id="path-detail-edit" class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">Edit Configuration</button>
+                <button id="path-detail-delete" class="rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50">Delete</button>
+            </div>
+        </div>
+        <div id="path-detail-notice" class="mt-3 hidden rounded-lg border px-4 py-3 text-sm" role="status" aria-live="polite"></div>
+    </div>
+
+    <div id="path-detail-error" class="hidden rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700"></div>
+
+    <div id="path-detail-content" class="space-y-6">
+        <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Path summary">
+            <article class="rounded-xl border border-gray-200 bg-white p-5">
+                <p class="text-sm font-medium text-gray-500">Path Name</p>
+                <p id="path-detail-summary-name" class="mt-2 break-all font-mono text-lg font-semibold text-gray-900">-</p>
+            </article>
+            <article class="rounded-xl border border-gray-200 bg-white p-5">
+                <p class="text-sm font-medium text-gray-500">Runtime Status</p>
+                <p id="path-detail-summary-status" class="mt-2 text-lg font-semibold text-gray-900">-</p>
+                <p id="path-detail-runtime-note" class="mt-1 text-xs text-gray-500">-</p>
+            </article>
+            <article class="rounded-xl border border-gray-200 bg-white p-5">
+                <p class="text-sm font-medium text-gray-500">Source Type</p>
+                <p id="path-detail-summary-source" class="mt-2 text-lg font-semibold text-gray-900">-</p>
+            </article>
+            <article class="rounded-xl border border-gray-200 bg-white p-5" aria-live="polite">
+                <p class="text-sm font-medium text-gray-500">Penonton Aktif</p>
+                <p id="path-detail-viewer-count" class="mt-2 text-2xl font-semibold text-gray-900">-</p>
+                <p id="path-detail-viewer-status" class="mt-1 text-xs text-gray-500">Memuat jumlah penonton...</p>
+            </article>
+        </section>
+
+        <section class="rounded-xl border border-gray-200 bg-white p-5 sm:p-6" aria-label="Viewer history">
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Grafik Penonton</h3>
+                <p class="mt-1 text-sm text-gray-500">Maksimal 60 sampel terakhir, diperbarui setiap 5 detik saat halaman dibuka.</p>
+            </div>
+            <div class="relative h-40" aria-label="Grafik riwayat jumlah penonton">
+                <svg id="path-detail-viewer-chart" class="h-full w-full" role="img" aria-label="Grafik jumlah penonton aktif"></svg>
+            </div>
+            <div class="mt-2 flex justify-between text-xs text-gray-400">
+                <span>Sampel terlama</span>
+                <span>Sampel terbaru</span>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-5">
+            <div class="space-y-6 xl:col-span-3">
+                <section class="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900">Informasi Sumber</h3>
+                        <p class="mt-1 text-sm text-gray-500">Sumber ini berasal dari konfigurasi path MediaMTX.</p>
+                    </div>
+                    <dl class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <div>
+                            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Source type</dt>
+                            <dd id="path-detail-source-type" class="mt-1 break-words text-sm font-medium text-gray-900">-</dd>
+                        </div>
+                        <div class="min-w-0 sm:col-span-2">
+                            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Source URL / runtime identifier</dt>
+                            <dd id="path-detail-source-url" class="mt-1 break-all font-mono text-sm text-gray-700">Not provided</dd>
+                        </div>
+                    </dl>
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <button id="path-detail-copy-source" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50" disabled>Copy Source</button>
+                        <p id="path-detail-source-note" class="text-xs text-gray-500">Source and output URLs are different endpoints.</p>
+                    </div>
+                </section>
+
+                <section class="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
+                    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">URL Output dari MediaMTX</h3>
+                            <p class="mt-1 text-sm text-gray-500">Only listeners enabled in the current server configuration are listed as available.</p>
+                        </div>
+                        <button id="path-detail-copy-all" class="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50" disabled>Copy All URLs</button>
+                    </div>
+                    <div id="path-detail-outputs" class="space-y-3">
+                        <p class="text-sm text-gray-500">Loading server protocol configuration...</p>
+                    </div>
+                    <p class="mt-4 text-xs leading-5 text-gray-500">Reachability also depends on network routing, firewall rules, and whether the stream is available. Listener configuration alone does not guarantee playback.</p>
+                </section>
+            </div>
+
+            <div class="xl:col-span-2">
+                <section id="path-detail-preview" class="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
+                    <div class="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Preview Stream</h3>
+                            <p id="path-detail-preview-status" class="mt-1 text-sm text-gray-500">Preview has not been started.</p>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-2">
+                            <span id="path-detail-live" class="hidden rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-800">LIVE</span>
+                            <button id="path-detail-test" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Test Stream</button>
+                        </div>
+                    </div>
+                    <div id="path-detail-preview-empty" class="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+                        <p class="font-medium text-gray-700">Preview is not playing</p>
+                        <p class="mt-2 max-w-sm text-sm text-gray-500">Use Test Stream to try an enabled HLS output. RTSP and RTMP cannot be played directly by a browser video element.</p>
+                    </div>
+                    <video id="path-detail-video" class="hidden aspect-video w-full rounded-lg bg-black" controls playsinline></video>
+                    <iframe id="path-detail-webrtc" class="hidden aspect-video w-full rounded-lg bg-black" title="MediaMTX WebRTC preview" allow="autoplay; fullscreen" allowfullscreen></iframe>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
