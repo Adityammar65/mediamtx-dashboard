@@ -227,12 +227,24 @@ class MediaMTXClient:
     # --- Paths ---
 
     async def list_paths(self):
-        r = await self.client.get(f"{self.base_url}/config/paths/list")
-        r.raise_for_status()
-        data = r.json()
-        if isinstance(data, dict) and isinstance(data.get("items"), list):
-            data["items"] = [_mask_path_config(item) for item in data["items"]]
-        return data
+        items = []
+        page = 0
+
+        while True:
+            r = await self.client.get(
+                f"{self.base_url}/config/paths/list",
+                params={"page": page, "itemsPerPage": 100},
+            )
+            r.raise_for_status()
+            data = r.json()
+            page_items = data.get("items", []) if isinstance(data, dict) else []
+            if not page_items:
+                break
+
+            items.extend(page_items)
+            page += 1
+
+        return {"items": [_mask_path_config(item) for item in items]}
 
     async def create_path(self, name, source, source_on_demand, **kwargs):
         data = {}

@@ -397,14 +397,14 @@ function initSidebar() {
     });
 
 
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', () => {
+    document.querySelector('nav[aria-label="Main navigation"]')?.addEventListener('click', event => {
+        if (event.target.closest('.nav-link')) {
             if (window.innerWidth < 1024) {
                 sidebar.classList.remove('mobile-open');
                 sidebarOverlay.classList.add('hidden');
                 document.body.style.overflow = '';
             }
-        });
+        }
     });
 
     logoutButton.addEventListener('click', async () => {
@@ -439,6 +439,18 @@ const pageTitleMap = {
 function getPageFromHash() {
     const hash = window.location.hash.slice(1);
     return hash.split('/')[0] || 'dashboard';
+}
+
+function getConfigPathGroupFromHash() {
+    const hash = window.location.hash.slice(1);
+    const groupStart = 'config-paths/';
+    if (!hash.startsWith(groupStart)) return null;
+
+    try {
+        return decodeURIComponent(hash.slice(groupStart.length));
+    } catch {
+        return null;
+    }
 }
 
 function getPathNameFromHash() {
@@ -477,14 +489,20 @@ async function navigateToPage(page, pathName = null) {
 
 
         document.querySelectorAll('.nav-link').forEach(link => {
+            const configPathGroup = getConfigPathGroupFromHash();
+            const isConfigPathGroupLink = link.hasAttribute('data-config-path-group');
             link.classList.toggle(
                 'nav-active',
-                link.dataset.page === page || (page === 'path-detail' && link.dataset.page === 'streams'),
+                isConfigPathGroupLink
+                    ? page === 'config-paths' && configPathGroup === link.dataset.configPathGroup
+                    : link.dataset.page === page || (page === 'path-detail' && link.dataset.page === 'streams'),
             );
         });
         currentPathName = page === 'path-detail' ? pathName : null;
         document.getElementById('page-title').textContent = page === 'path-detail'
             ? (pathName || 'Path Detail')
+            : page === 'config-paths' && getConfigPathGroupFromHash() !== null
+                ? `${pageTitleMap[page]} - ${getConfigPathGroupFromHash() || 'Tanpa grup'}`
             : pageTitleMap[page] || 'Dashboard';
 
         currentPage = page;
@@ -1627,6 +1645,10 @@ function initAmsImport() {
             const data = result.data;
             const failures = data.failed ? ` ${data.failed} failed: ${data.errors.join('; ')}` : '';
             alert(`${data.imported} of ${data.total} stream(s) imported.${failures}`);
+            if (data.imported > 0 && window.location.hash !== '#config-paths') {
+                currentRoute = '#config-paths';
+                window.location.hash = '#config-paths';
+            }
             await loadConfigPaths();
         } catch (e) {
             alert(`Unable to import AMS export: ${e.message}`);
@@ -2192,6 +2214,7 @@ async function loadConfigPaths() {
         const paths = await fetchAPI('/paths');
         if (paths.success) {
             allConfigPaths = paths.data.items || [];
+            renderConfigPathGroups(allConfigPaths);
             configPathsCurrentPage = 1;
             renderConfigPaths(allConfigPaths);
         }
@@ -2202,14 +2225,85 @@ async function loadConfigPaths() {
     }
 }
 
-function renderConfigPaths(paths) {
-    const tbody = document.getElementById('config-paths-table-body');
-    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
+async function loadConfigPathGroups() {
+    try {
+        const paths = await fetchAPI('/paths');
+        if (!paths.success) throw new Error(paths.message || 'Unable to load application groups');
+        renderConfigPathGroups(paths.data.items || []);
+    } catch (e) {
+        showError(e.message);
+    }
+}
 
-    const filtered = paths.filter(p =>
-        [p.name, p.source, p.fallback, p.source_redirect]
+function getConfigPathGroupName(pathName) {
+    const name = String(pathName || '');
+    const separatorIndex = name.indexOf('/');
+    return separatorIndex === -1 ? '' : name.slice(0, separatorIndex);
+}
+
+function renderConfigPathGroups(paths) {
+    const container = document.getElementById('config-path-groups');
+    if (!container) return;
+
+    const groups = new Map();
+    paths.forEach(path => {
+        const groupName = getConfigPathGroupName(path.name);
+        groups.set(groupName, (groups.get(groupName) || 0) + 1);
+    });
+
+    if (groups.size === 0) {
+        container.innerHTML = '<p class="px-4 py-2 text-xs text-gray-400">No application groups</p>';
+        return;
+    }
+
+    container.innerHTML = [...groups.entries()]
+        .sort(([first], [second]) => first.localeCompare(second))
+        .map(([groupName, count]) => {
+            const label = groupName || 'Tanpa grup';
+            return `
+                <a
+                    href="#config-paths/${encodeURIComponent(groupName)}"
+                    class="nav-link config-path-group-link"
+                    data-page="config-paths"
+                    data-config-path-group="${escapeHtml(groupName)}"
+                    title="${escapeHtml(label)} (${count} paths)"
+                >
+                    <span class="nav-label">${escapeHtml(label)}</span>
+                </a>
+            `;
+        })
+        .join('');
+
+    const selectedGroup = getConfigPathGroupFromHash();
+    container.querySelectorAll('[data-config-path-group]').forEach(link => {
+        link.classList.toggle(
+            'nav-active',
+            getPageFromHash() === 'config-paths' && link.dataset.configPathGroup === selectedGroup,
+        );
+    });
+}
+
+function getFilteredConfigPaths(paths) {
+    const selectedGroup = getConfigPathGroupFromHash();
+    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
+    return paths.filter(path =>
+        (selectedGroup === null || getConfigPathGroupName(path.name) === selectedGroup)
+        && [path.name, path.source, path.fallback, path.source_redirect]
             .some(value => String(value || '').toLowerCase().includes(searchTerm))
     );
+}
+
+function renderConfigPaths(paths) {
+    const tbody = document.getElementById('config-paths-table-body');
+    const selectedGroup = getConfigPathGroupFromHash();
+    const groupTitle = document.getElementById('config-paths-group-title');
+    const groupDescription = document.getElementById('config-paths-group-description');
+    const filtered = getFilteredConfigPaths(paths);
+
+    groupTitle.textContent = selectedGroup === null ? 'All paths' : selectedGroup || 'Tanpa grup';
+    groupDescription.textContent = selectedGroup === null
+        ? `${filtered.length} path(s) across all application groups.`
+        : `${filtered.length} path(s) in this application group.`;
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / CONFIG_PATHS_PER_PAGE));
     configPathsCurrentPage = Math.min(configPathsCurrentPage, totalPages);
@@ -2290,11 +2384,7 @@ function updateConfigPathsPaginationControls(totalFiltered, totalPages) {
 }
 
 function changeConfigPathsPage(delta) {
-    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
-    const filtered = allConfigPaths.filter(path =>
-        [path.name, path.source, path.fallback, path.source_redirect]
-            .some(value => String(value || '').toLowerCase().includes(searchTerm))
-    );
+    const filtered = getFilteredConfigPaths(allConfigPaths);
     const totalPages = Math.max(1, Math.ceil(filtered.length / CONFIG_PATHS_PER_PAGE));
     const nextPage = Math.max(1, Math.min(totalPages, configPathsCurrentPage + delta));
 
@@ -3351,6 +3441,7 @@ async function confirmCustomPeriodDelete() {
 function startAutoRefresh() {
     stopAutoRefresh();
     refreshInterval = setInterval(() => {
+        loadConfigPathGroups();
         if (currentPage === 'path-detail') {
             refreshPathRuntime();
         } else if (currentPage !== 'config-global' && currentPage !== 'config-paths') {
@@ -3380,6 +3471,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const initialPage = getPageFromHash();
     currentRoute = window.location.hash;
+    if (initialPage !== 'config-paths') loadConfigPathGroups();
     navigateToPage(initialPage, getPathNameFromHash());
 
     startAutoRefresh();
