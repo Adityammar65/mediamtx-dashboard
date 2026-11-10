@@ -91,6 +91,17 @@
                         </div>
                         <button id="path-detail-copy-all" class="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50" disabled>Copy All URLs</button>
                     </div>
+                    <div class="mb-4 grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-4 sm:grid-cols-2">
+                        <label class="text-sm font-medium text-gray-700">
+                            Username
+                            <input id="path-detail-output-username" type="text" autocomplete="off" placeholder="MediaMTX reader username" class="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-normal">
+                        </label>
+                        <label class="text-sm font-medium text-gray-700">
+                            Password
+                            <input id="path-detail-output-password" type="password" autocomplete="new-password" placeholder="MediaMTX reader password" class="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-normal">
+                        </label>
+                        <p class="text-xs leading-5 text-gray-500 sm:col-span-2">Optional. Enter a user with read permission in MediaMTX authInternalUsers; credentials are added to the output URLs and are not saved.</p>
+                    </div>
                     <div id="path-detail-outputs" class="space-y-3">
                         <p class="text-sm text-gray-500">Loading server protocol configuration...</p>
                     </div>

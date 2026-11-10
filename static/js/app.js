@@ -544,6 +544,8 @@ function bindPageEvents(page) {
     if (page === 'path-detail') {
         document.getElementById('path-detail-test')?.addEventListener('click', testPathPreview);
         document.getElementById('path-detail-copy-all')?.addEventListener('click', copyAllPathOutputUrls);
+        document.getElementById('path-detail-output-username')?.addEventListener('input', updatePathOutputCredentials);
+        document.getElementById('path-detail-output-password')?.addEventListener('input', updatePathOutputCredentials);
         document.getElementById('path-detail-edit')?.addEventListener('click', () => {
                 if (currentPathName && pathDetailState?.configAvailable) window.editPath(currentPathName);
         });
@@ -1020,10 +1022,11 @@ async function loadPathDetail(pathName) {
     contentEl.classList.remove('hidden');
     pathDetailState = null;
 
-    const [configResult, runtimeResult, serverConfigResult] = await Promise.allSettled([
+    const [configResult, runtimeResult, serverConfigResult, publicAddressResult] = await Promise.allSettled([
         fetchAPI(`/paths/${encodeURIComponent(pathName)}`),
         fetchAPI(`/streams/${encodeURIComponent(pathName)}`),
         fetchAPI('/server/config'),
+        fetchAPI('/server/public-address'),
     ]);
     if (loadId !== pathDetailLoadId || currentPage !== 'path-detail' || currentPathName !== pathName) return;
 
@@ -1064,6 +1067,10 @@ async function loadPathDetail(pathName) {
         serverConfig: serverConfigResult.status === 'fulfilled' && serverConfigResult.value.success
             ? serverConfigResult.value.data
             : null,
+        mediaMtxPublicHost: publicAddressResult.status === 'fulfilled' && publicAddressResult.value.success
+            ? publicAddressResult.value.data.host
+            : '',
+        outputCredentials: { username: '', password: '' },
         outputUrls: [],
     };
     renderPathDetail();
@@ -1080,6 +1087,11 @@ async function loadPathDetail(pathName) {
             ? serverConfigResult.reason.message
             : serverConfigResult.value.message || 'MediaMTX returned an unsuccessful configuration response';
         showPathNotice(`Server protocol configuration is unavailable: ${message}`, 'warning');
+    } else if (publicAddressResult.status === 'rejected' || !publicAddressResult.value.success) {
+        const message = publicAddressResult.status === 'rejected'
+            ? publicAddressResult.reason.message
+            : publicAddressResult.value.message || 'MediaMTX public address is unavailable';
+        showPathNotice(`MediaMTX public address is unavailable; using the dashboard host: ${message}`, 'warning');
     }
 }
 
@@ -1147,7 +1159,7 @@ function encodePathSegments(pathName) {
     return pathName.split('/').map(segment => encodeURIComponent(segment)).join('/');
 }
 
-function getListenerUrl(address, scheme, pathName, suffix = '') {
+function getListenerUrl(address, scheme, pathName, suffix = '', publicHost = '') {
     if (typeof address !== 'string' || !address.trim()) return null;
     const match = address.trim().match(/^(?:\[([^\]]+)\]|([^:]*)):(\d+)$/);
     if (!match) return null;
@@ -1158,47 +1170,57 @@ function getListenerUrl(address, scheme, pathName, suffix = '') {
     const isWildcardOrLocal = !bindHost ||
         ['0.0.0.0', '::', '::1', 'localhost', '127.0.0.1'].includes(normalizedBindHost) ||
         normalizedBindHost.startsWith('127.');
-    const host = isWildcardOrLocal ? window.location.hostname : bindHost;
+    const configuredPublicHost = typeof publicHost === 'string' ? publicHost.trim() : '';
+    const host = configuredPublicHost || (isWildcardOrLocal ? window.location.hostname : bindHost);
     if (!host) return null;
 
     const formattedHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
     return `${scheme}://${formattedHost}:${port}/${encodePathSegments(pathName)}${suffix}`;
 }
 
-function getPathOutputUrls(serverConfig, pathName) {
+function getPathOutputUrls(serverConfig, pathName, publicHost, credentials = {}) {
     if (!serverConfig) return [];
     const outputs = [];
     const addOutput = (label, url, vlcCompatible = false) => {
-        if (url) outputs.push({ label, url, vlcCompatible });
+        if (url) {
+            const username = encodeURIComponent(credentials.username || '');
+            const password = encodeURIComponent(credentials.password || '');
+            const auth = username || password ? `${username}:${password}@` : '';
+            outputs.push({
+                label,
+                url: auth ? url.replace('://', `://${auth}`) : url,
+                vlcCompatible,
+            });
+        }
     };
 
     if (!serverConfig.rtspEncryption || serverConfig.rtspEncryption !== 'strict') {
-        addOutput('RTSP', getListenerUrl(serverConfig.rtspAddress, 'rtsp', pathName), true);
+        addOutput('RTSP', getListenerUrl(serverConfig.rtspAddress, 'rtsp', pathName, '', publicHost), true);
     }
 
     const rtmpEncryption = serverConfig.rtmpEncryption || 'no';
     if (serverConfig.rtmp === true && rtmpEncryption !== 'strict') {
-        addOutput('RTMP', getListenerUrl(serverConfig.rtmpAddress, 'rtmp', pathName), true);
+        addOutput('RTMP', getListenerUrl(serverConfig.rtmpAddress, 'rtmp', pathName, '', publicHost), true);
     }
 
     if (serverConfig.hls === true) {
         const scheme = serverConfig.hlsEncryption === true ? 'https' : 'http';
-        addOutput('HLS', getListenerUrl(serverConfig.hlsAddress, scheme, pathName, '/index.m3u8'), true);
+        addOutput('HLS', getListenerUrl(serverConfig.hlsAddress, scheme, pathName, '/index.m3u8', publicHost), true);
     }
 
     if (serverConfig.webrtc === true) {
         const scheme = serverConfig.webrtcEncryption === true ? 'https' : 'http';
-        addOutput('WebRTC', getListenerUrl(serverConfig.webrtcAddress, scheme, pathName));
+        addOutput('WebRTC', getListenerUrl(serverConfig.webrtcAddress, scheme, pathName, '', publicHost));
     }
     return outputs;
 }
 
 function renderPathDetail() {
     if (!pathDetailState) return;
-    const { name, config, configAvailable, runtime, serverConfig } = pathDetailState;
+    const { name, config, configAvailable, runtime, serverConfig, mediaMtxPublicHost } = pathDetailState;
     const status = getPathRuntimeStatus(runtime, configAvailable, pathDetailState.runtimeAvailable);
     const source = getPathSource(config, runtime);
-    const outputs = getPathOutputUrls(serverConfig, name);
+    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, pathDetailState.outputCredentials);
     pathDetailState.outputUrls = outputs;
 
     document.getElementById('path-detail-summary-name').textContent = name;
@@ -1222,6 +1244,19 @@ function renderPathDetail() {
     document.getElementById('path-detail-delete').title = configAvailable
         ? ''
         : 'No specific path configuration is available to delete.';
+    document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
+    renderPathOutputRows(outputs);
+}
+
+function updatePathOutputCredentials() {
+    if (!pathDetailState) return;
+    pathDetailState.outputCredentials = {
+        username: document.getElementById('path-detail-output-username').value,
+        password: document.getElementById('path-detail-output-password').value,
+    };
+    const { serverConfig, name, mediaMtxPublicHost, outputCredentials } = pathDetailState;
+    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, outputCredentials);
+    pathDetailState.outputUrls = outputs;
     document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
     renderPathOutputRows(outputs);
 }

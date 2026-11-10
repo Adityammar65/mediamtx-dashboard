@@ -46,6 +46,8 @@ File default `docker-compose.yml` memakai bridge network. Dashboard mengakses Me
 docker compose up -d
 ```
 
+Jika dashboard dan MediaMTX dapat diakses melalui IP/domain publik yang berbeda, atur `MEDIAMTX_PUBLIC_HOST` di `.env` ke hostname atau IP publik MediaMTX (tanpa skema dan port), misalnya `MEDIAMTX_PUBLIC_HOST=203.0.113.10`. URL output pada halaman detail path akan menggunakan host tersebut dengan port dari konfigurasi listener MediaMTX. Pastikan port listener dapat diakses dari jaringan pengguna. Jika tidak diatur, dashboard tetap menggunakan host dashboard untuk listener wildcard/lokal.
+
 Untuk membaca metrik sistem host, gunakan konfigurasi host network:
 
 ```sh
