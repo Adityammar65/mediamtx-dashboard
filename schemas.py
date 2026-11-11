@@ -98,14 +98,6 @@ class PathDetailResponse(BaseModel):
     @field_validator("source", "fallback", "source_redirect", mode="before")
     @classmethod
     def mask_password(cls, v: Optional[str]) -> Optional[str]:
-        if v and "@" in v and "://" in v:
-
-            parts = v.split("@")
-            if len(parts) == 2:
-                auth = parts[0]
-                if ":" in auth:
-                    user = auth.split(":")[0]
-                    return f"{user}:***@{parts[1]}"
         return v
 
 

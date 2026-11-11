@@ -20,13 +20,13 @@
 
         <aside
             id="sidebar"
-            class="fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-all duration-300 lg:translate-x-0"
+            class="fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-all duration-300 lg:translate-x-0 flex flex-col"
         >
 
             <!-- Sidebar Header -->
 
             <div
-                class="flex items-center justify-between h-16 px-4 border-b border-gray-200"
+                class="flex items-center justify-between h-16 px-4 border-b border-gray-200 flex-shrink-0"
             >
                 <h1
                     id="sidebar-logo"
@@ -57,7 +57,7 @@
 
             <!-- Navigation -->
 
-            <nav class="p-4 space-y-1" aria-label="Main navigation">
+            <nav class="p-4 space-y-1 flex-1 overflow-y-auto" aria-label="Main navigation">
 
                 <!-- Overview Section -->
 
@@ -154,6 +154,16 @@
                     >
                         <p class="px-4 py-2 text-xs text-gray-400">Loading groups...</p>
                     </div>
+                    <a
+                        href="#internal-users"
+                        class="nav-link"
+                        data-page="internal-users"
+                    >
+                        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7zM19 8v6m3-3h-6"></path>
+                        </svg>
+                        <span class="nav-label">Internal Users</span>
+                    </a>
                     <a
                         href="#config-defaults"
                         class="nav-link"
@@ -266,7 +276,7 @@
             <!-- Sidebar Footer -->
 
             <div
-                class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 sidebar-footer"
+                class="p-4 border-t border-gray-200 sidebar-footer flex-shrink-0"
             >
                 <button
                     id="logout-btn"

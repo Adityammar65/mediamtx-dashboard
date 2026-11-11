@@ -26,8 +26,13 @@ function formatNumber(num) {
 
 function getUptimeSeconds(startedString) {
     if (!startedString) return 0;
-    const startTime = new Date(startedString).getTime();
-    const now = Date.getTime ? Date.now() : new Date().getTime();
+    if (typeof startedString === 'number') {
+            return startedString > 10000000000 ? Math.floor(startedString / 1000) : startedString;
+        }
+    const cleanStarted = String(startedString).replace(/([+-]\d{2}:\d{2}|Z)$/, '');
+    const startTime = new Date(cleanStarted).getTime();
+    if (isNaN(startTime)) return 0;
+    const now = Date.now();
     const diffSeconds = Math.floor((now - startTime) / 1000);
     return diffSeconds > 0 ? diffSeconds : 0;
 }
@@ -430,6 +435,7 @@ const pageTitleMap = {
     'config-global': 'Configuration - Global',
     'config-paths': 'Configuration - Paths',
     'config-defaults': 'Configuration - Path Defaults',
+        'internal-users': 'Internal Users',
     'runtime-hls': 'Runtime - HLS',
     'runtime-rtsp': 'Runtime - RTSP',
     'runtime-rtmp': 'Runtime - RTMP',
@@ -464,7 +470,7 @@ function getPathNameFromHash() {
 }
 
 async function navigateToPage(page, pathName = null) {
-    const knownPages = ['dashboard', 'streams', 'path-detail', 'config-global', 'config-defaults', 'runtime-hls', 'runtime-rtsp', 'runtime-rtmp', 'runtime-logs', 'config-paths'];
+    const knownPages = ['dashboard', 'streams', 'path-detail', 'config-global', 'config-defaults', 'runtime-hls', 'runtime-rtsp', 'runtime-rtmp', 'runtime-logs', 'config-paths', 'internal-users'];
     const template = knownPages.includes(page) ? page : 'placeholder';
     const content = document.getElementById('page-content');
 
@@ -511,6 +517,41 @@ async function navigateToPage(page, pathName = null) {
         content.innerHTML = `<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">Error: ${escapeHtml(error.message)}</div>`;
         setConnectionStatus(false);
     }
+}
+
+async function initInternalUsers() {
+    const form = document.getElementById('internal-user-form');
+    const body = document.getElementById('internal-users-body');
+    const status = document.getElementById('internal-user-status');
+    if (!body) return;
+    try {
+        const result = await fetchAPI('/internal-users');
+        const users = (result.data || []).sort((a, b) => String(a.permissions?.[0]?.path || '').localeCompare(String(b.permissions?.[0]?.path || '')));
+        body.innerHTML = users.map(item => {
+            const permissions = item.permissions || [];
+            const path = permissions[0]?.path || '';
+            const checks = ['read', 'publish', 'playback', 'api', 'metrics', 'pprof'].map(action => `<label class="mr-3 whitespace-nowrap"><input type="checkbox" data-permission="${action}" ${permissions.some(p => p.action === action) ? 'checked' : ''}> ${action}</label>`).join('');
+            return `<tr data-user-id="${escapeHtml(item.id || '')}" data-user="${escapeHtml(item.user || '')}" data-path="${escapeHtml(path)}"><td class="px-6 py-3"><input data-field="user" value="${escapeHtml(item.user || '')}" class="w-32 rounded border px-2 py-1"></td><td class="px-6 py-3"><input data-field="path" value="${escapeHtml(path)}" class="w-full min-w-64 rounded border px-2 py-1 font-mono"></td><td class="px-6 py-3 text-xs">${checks}</td><td class="px-6 py-3 whitespace-nowrap"><button type="button" data-action="save" class="mr-2 rounded bg-blue-600 px-3 py-1 text-white">Save</button><button type="button" data-action="delete" class="rounded bg-red-600 px-3 py-1 text-white">Delete</button></td></tr>`;
+        }).join('') || '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No users configured</td></tr>';
+    } catch (error) { body.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`; }
+    body.onclick = async event => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const row = button.closest('tr');
+        const permissions = [...row.querySelectorAll('[data-permission]:checked')].map(input => ({ action: input.dataset.permission, path: row.querySelector('[data-field="path"]').value.trim() }));
+        try {
+            if (button.dataset.action === 'delete') await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'DELETE' });
+            else await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'PATCH', body: JSON.stringify({ user: row.querySelector('[data-field="user"]').value.trim(), permissions }) });
+            await initInternalUsers();
+        } catch (error) { showError(error.message); }
+    };
+    form?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const permissions = [...form.querySelectorAll('[name="new-permission"]:checked')].map(input => ({ action: input.value, path: document.getElementById('internal-user-path').value.trim() }));
+        if (!permissions.length) { status.textContent = 'Select at least one permission.'; return; }
+        try { await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user: document.getElementById('internal-user-name').value.trim(), password: document.getElementById('internal-user-password').value, permissions }) }); status.textContent = 'Saved.'; form.reset(); document.getElementById('internal-user-path').value = '~^atcs-kota/(.+)'; await initInternalUsers(); } catch (error) { status.textContent = error.message; }
+    }, { once: true });
+    loadConfigPathGroups();
 }
 
 function bindPageEvents(page) {
@@ -675,6 +716,9 @@ async function loadPageData(page) {
         case 'config-global':
             await loadConfigGlobal();
             break;
+        case 'internal-users':
+            initInternalUsers();
+            break;
         case 'config-defaults':
             await loadConfigDefaults();
             break;
@@ -741,20 +785,6 @@ async function loadDashboard() {
         renderSessionsError();
     }
 
-
-    try {
-        const health = await fetchAPI('/server/health');
-        if (health.success) {
-            renderServerStatus(health.data);
-        } else {
-            renderServerStatusError();
-        }
-    } catch (e) {
-        showError('server/health: ' + e.message);
-        renderServerStatusError();
-    }
-
-
     const totalPaths = document.getElementById('server-total-paths');
     try {
         const paths = await fetchAPI('/paths');
@@ -768,9 +798,6 @@ async function loadDashboard() {
         showError('paths: ' + e.message);
         totalPaths.textContent = '-';
     }
-
-
-
 
     setConnectionStatus(anySuccess);
 }
@@ -968,12 +995,28 @@ function renderDashboardSessions(sessions) {
     `).join('');
 }
 
+async function cekHealth() {
+    try {
+        const health = await fetchAPI('/server/health');
+        if (currentPage != 'dashboard') {
+            setConnectionStatus(health.success);
+            return;
+        }
+        if (health.success) {
+            renderServerStatus(health.data);
+        } else {
+            renderServerStatusError();
+        }
+  } catch (e) {
+      showError('server/health: ' + e.message);
+      renderServerStatusError();
+  }
+}
+
 function renderServerConfig(config) {
 
     const paths = config.paths || {};
     const pathCount = Object.keys(paths).length;
-
-
 
     document.getElementById('server-total-paths').textContent = pathCount;
 }
@@ -989,7 +1032,6 @@ async function loadStreams() {
     try {
         const paths = await fetchAPI('/streams');
         if (paths.success) {
-            allPaths = paths.data.items || [];
             allStreams = paths.data.items || [];
             streamsCurrentPage = 1;
             renderStreams(allStreams);
@@ -2241,6 +2283,7 @@ form?.addEventListener('submit', async (e) => {
 // --- Config Paths ---
 
 let allConfigPaths = [];
+let cachedInternalUsers = [];
 let configPathsCurrentPage = 1;
 const CONFIG_PATHS_PER_PAGE = 10;
 
@@ -2261,13 +2304,35 @@ async function loadConfigPaths() {
 }
 
 async function loadConfigPathGroups() {
-    try {
-        const paths = await fetchAPI('/paths');
-        if (!paths.success) throw new Error(paths.message || 'Unable to load application groups');
-        renderConfigPathGroups(paths.data.items || []);
+  try {
+          const [pathsRes, usersRes] = await Promise.all([
+              fetchAPI('/paths'),
+              fetchAPI('/internal-users')
+          ]);
+          if (!pathsRes.success) throw new Error(pathsRes.message || 'Unable to load application groups');
+
+          cachedInternalUsers = usersRes.success ? (usersRes.data || []) : [];
+          renderConfigPathGroups(pathsRes.data.items || []);
     } catch (e) {
         showError(e.message);
     }
+}
+
+function formatGroupLabel(groupName) {
+    if (!groupName) return 'Tanpa grup';
+    return groupName.charAt(0).toUpperCase() + groupName.slice(1);
+}
+
+function getCanonicalGroupName(permPath) {
+    if (!permPath) return '';
+    if (permPath.startsWith('~')) {
+        // Remove ~^ prefix
+        let clean = permPath.replace(/^~\^?/, '');
+        // Take everything before the first / or regex meta character
+        let match = clean.match(/^[a-zA-Z0-9_-]+/);
+        return match ? match[0] : permPath;
+    }
+    return permPath.split('/')[0] || permPath;
 }
 
 function getConfigPathGroupName(pathName) {
@@ -2277,37 +2342,70 @@ function getConfigPathGroupName(pathName) {
 }
 
 function renderConfigPathGroups(paths) {
-    const container = document.getElementById('config-path-groups');
+  const container = document.getElementById('config-path-groups');
     if (!container) return;
 
     const groups = new Map();
-    paths.forEach(path => {
-        const groupName = getConfigPathGroupName(path.name);
-        groups.set(groupName, (groups.get(groupName) || 0) + 1);
+    groups.set('Tanpa grup', 0);
+
+    cachedInternalUsers.forEach(user => {
+        (user.permissions || []).forEach(perm => {
+            if (perm.path) {
+                const groupName = getCanonicalGroupName(perm.path);
+                groups.set(groupName, 0);
+            }
+        });
     });
 
-    if (groups.size === 0) {
-        container.innerHTML = '<p class="px-4 py-2 text-xs text-gray-400">No application groups</p>';
-        return;
-    }
+    paths.forEach(path => {
+        let matched = false;
+
+        for (const user of cachedInternalUsers) {
+            for (const perm of (user.permissions || [])) {
+                if (!perm.path) continue;
+
+                let isMatch = false;
+                if (perm.path.startsWith('~')) {
+                    try {
+                        const regex = new RegExp(perm.path.slice(1));
+                        isMatch = regex.test(path.name);
+                    } catch (e) { console.error('Invalid regex', perm.path, e); }
+                } else {
+                    isMatch = path.name.startsWith(perm.path);
+                }
+
+                if (isMatch) {
+                    const groupName = getCanonicalGroupName(perm.path);
+                    groups.set(groupName, (groups.get(groupName) || 0) + 1);
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) break;
+        }
+
+        if (!matched) {
+            groups.set('Tanpa grup', (groups.get('Tanpa grup') || 0) + 1);
+        }
+    });
 
     container.innerHTML = [...groups.entries()]
-        .sort(([first], [second]) => first.localeCompare(second))
-        .map(([groupName, count]) => {
-            const label = groupName || 'Tanpa grup';
-            return `
-                <a
-                    href="#config-paths/${encodeURIComponent(groupName)}"
-                    class="nav-link config-path-group-link"
-                    data-page="config-paths"
-                    data-config-path-group="${escapeHtml(groupName)}"
-                    title="${escapeHtml(label)} (${count} paths)"
-                >
-                    <span class="nav-label">${escapeHtml(label)}</span>
-                </a>
-            `;
-        })
-        .join('');
+      .sort(([first], [second]) => first.localeCompare(second))
+      .map(([groupName, count]) => {
+          const label = formatGroupLabel(groupName);
+          return `
+              <a
+                  href="#config-paths/${encodeURIComponent(groupName)}"
+                  class="nav-link config-path-group-link"
+                  data-page="config-paths"
+                  data-config-path-group="${escapeHtml(groupName)}"
+                  title="${escapeHtml(groupName)} (${count} paths)"
+              >
+                  <span class="nav-label">${escapeHtml(label)}</span>
+              </a>
+          `;
+      })
+      .join('');
 
     const selectedGroup = getConfigPathGroupFromHash();
     container.querySelectorAll('[data-config-path-group]').forEach(link => {
@@ -2430,31 +2528,38 @@ function changeConfigPathsPage(delta) {
 }
 
 function exportConfigPaths() {
-    const exportData = allConfigPaths.map(path => {
-        let type = 'Publisher';
-        let source = '(publisher)';
-        if (path.source_redirect) {
-            type = 'Redirect';
-            source = path.source_redirect;
-        } else if (path.source) {
-            type = 'URL Source';
-            source = path.source;
-        }
+    const exportData = {
+        antmedia: "streams-export",
+        version: 1,
+        app: "",
+        exportedAt: Date.now(),
+        streams: allConfigPaths.map(path => {
+            let streamUrl = "";
+            if (path.source_redirect) {
+                streamUrl = path.source_redirect;
+            } else if (path.source && path.source !== 'publisher') {
+                streamUrl = path.source;
+            }
 
-        return {
-            name: path.name,
-            type,
-            source,
-            fallback: path.fallback || null,
-            on_demand: Boolean(path.source_on_demand),
-            max_readers: path.max_readers ?? null,
-        };
-    });
+            return {
+                streamId: path.name,
+                name: path.name,
+                type: path.source_redirect ? "redirect" : (path.source === 'publisher' ? "liveStream" : "streamSource"),
+                streamUrl: streamUrl,
+                autoStartStopEnabled: Boolean(path.source_on_demand),
+                playListItemList: [],
+                playlistLoopEnabled: true,
+                mp4Enabled: 0,
+                webMEnabled: 0,
+                publicStream: true
+            };
+        })
+    };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const downloadUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = downloadUrl;
-    link.download = `path-configurations-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `mediamtx-export-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -2704,7 +2809,7 @@ const PATH_DEFAULTS_FIELD_DESCRIPTIONS = {
 };
 
 const PATH_DEFAULTS_PLACEHOLDERS = {
-    name: 'e.g. all_others',
+    name: 'e.g. all_Tanpa grup',
     source: 'publisher or rtsp://camera/stream',
     sourceFingerprint: 'SHA-256 certificate fingerprint',
     sourceOnDemandStartTimeout: 'e.g. 10s',
@@ -3476,10 +3581,14 @@ async function confirmCustomPeriodDelete() {
 function startAutoRefresh() {
     stopAutoRefresh();
     refreshInterval = setInterval(() => {
-        loadConfigPathGroups();
+        cekHealth();
         if (currentPage === 'path-detail') {
             refreshPathRuntime();
-        } else if (currentPage !== 'config-global' && currentPage !== 'config-paths') {
+        } else if (
+            currentPage !== 'config-global'
+            && currentPage !== 'config-paths'
+            && currentPage !== 'config-defaults'
+            && currentPage !== 'internal-users') {
             loadPageData(currentPage);
         }
     }, 5000);
@@ -3506,7 +3615,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const initialPage = getPageFromHash();
     currentRoute = window.location.hash;
-    if (initialPage !== 'config-paths') loadConfigPathGroups();
+    loadConfigPathGroups();
     navigateToPage(initialPage, getPathNameFromHash());
 
     startAutoRefresh();

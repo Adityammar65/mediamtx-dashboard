@@ -1,9 +1,13 @@
+from statistics import median
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 import asyncio
+import json
 import time
 from collections import deque
 from pathlib import Path
 from typing import Optional
+import re
+from datetime import datetime, timezone
 
 import httpx
 import yaml
@@ -37,55 +41,54 @@ _PROTOCOL_READER_KEYS = (
 
 
 def _mask_sensitive_url(value):
-    if not isinstance(value, str):
-        return value
-
-    parts = urlsplit(value)
-    netloc = parts.netloc
-    if "@" in netloc:
-        netloc = f"***:***@{netloc.rsplit('@', 1)[1]}"
-
-    query = []
-    for key, item in parse_qsl(parts.query, keep_blank_values=True):
-        normalized_key = key.lower().replace("-", "_")
-        sensitive = normalized_key in _SENSITIVE_QUERY_KEYS or any(
-            marker in normalized_key for marker in ("token", "password", "passwd", "secret", "authorization", "apikey")
-        )
-        query.append((key, "***" if sensitive else item))
-    return urlunsplit((parts.scheme, netloc, parts.path, urlencode(query), parts.fragment))
-
+    return value
 
 def _mask_path_config(config):
-    if not isinstance(config, dict):
-        return config
-
-    safe_config = dict(config)
-    for key in ("source", "sourceRedirect", "fallback"):
-        if key in safe_config:
-            safe_config[key] = _mask_sensitive_url(safe_config[key])
-    return safe_config
+    return config
 
 
 class MediaMTXClient:
     _instance = None
     _viewer_history = {}
 
-
     _cache_lock = asyncio.Lock()
     _ram_config = {}
     _cache_loaded = False
     _yaml_path = Path("mediamtx.yml")
+    _internalUsers = Path("internalUsers.json")
+    _ram_internal_users = {}
+    _info = {"connected": False, "restarted": False, "version": "unknown", "started": None}
+    _health_started = None
+    _last_restore_started = None
+    _restoring_after_restart = False
     _is_dirty = False
     _last_modified = 0.0
     _debounce_seconds = 30.0
 
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     def __init__(self):
+        if MediaMTXClient._instance is not None:
+            raise RuntimeError("MediaMTXClient is a singleton, use get_instance()")
         base = str(settings.MEDIAMTX_API_URL).rstrip("/")
         self.base_url = f"{base}/v3"
         self.client = httpx.AsyncClient(timeout=10.0)
         self.yaml_path = self._yaml_path
         if not MediaMTXClient._cache_loaded:
             self._load_initial_cache()
+        self._load_internal_users_cache()
+
+    def _load_internal_users_cache(self):
+        try:
+            if MediaMTXClient._internalUsers.exists():
+                data = json.loads(MediaMTXClient._internalUsers.read_text())
+                MediaMTXClient._ram_internal_users = data.get("users", {})
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"[Warning] Gagal memuat internalUsers.json: {exc}")
 
     def _load_initial_cache(self):
         """Memuat konfigurasi awal dari file yml ke RAM saat pertama kali inisialisasi."""
@@ -140,6 +143,15 @@ class MediaMTXClient:
 
         asyncio.create_task(self._debounce_flush())
 
+    async def _queue_save_to_json(self, data: dict):
+        async with self._cache_lock:
+            MediaMTXClient._ram_internal_users.update(data.get("users", {}))
+            payload = {
+                "version": 1,
+                "users": MediaMTXClient._ram_internal_users,
+            }
+            MediaMTXClient._internalUsers.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+
     async def _debounce_flush(self):
         """Menunggu hingga aktivitas konfigurasi mereda sebelum menulis ke disk."""
         await asyncio.sleep(self._debounce_seconds)
@@ -167,20 +179,194 @@ class MediaMTXClient:
 
     # --- Server ---
 
-    async def get_server_health(self):
+    def _parse_started_to_seconds(self, started_str: str) -> int:
+        if not started_str:
+            return 0
         try:
-            r = await self.client.get(f"{self.base_url}/info")
-            r.raise_for_status()
-            return {"connected": True, **r.json()}
-        except httpx.HTTPError:
-            return {"connected": False, "version": "unknown"}
+            clean_str = started_str.replace("Z", "+00:00")
+            start_dt = datetime.fromisoformat(clean_str)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            diff_seconds = int((datetime.now(timezone.utc) - start_dt).total_seconds())
+            return max(diff_seconds, 0)
+        except Exception as e:
+            print(f"Gagal memparsing started time '{started_str}': {e}")
+            return 0
+
+    async def get_server_health(self):
+        return {"connected": bool(MediaMTXClient._info.get("connected", False)), **MediaMTXClient._info}
+
+    async def _cekMediamtxHealth(self):
+        """Poll MediaMTX independently from frontend requests."""
+        print("[Info] Background health check MediaMTX dimulai...", flush=True)
+        while True:
+            try:
+                response = await self.client.get(
+                    f"{self.base_url}/info",
+                    headers={"Cache-Control": "no-cache"}
+                )
+                response.raise_for_status()
+                info = response.json()
+                started = info.get("started")
+
+                restarted = (
+                    MediaMTXClient._health_started is not None
+                    and started != MediaMTXClient._health_started
+                )
+
+                MediaMTXClient._health_started = started
+
+                MediaMTXClient._info.clear()
+                MediaMTXClient._info.update({
+                    "connected": True,
+                    "restarted": restarted,
+                    "version": info.get("version", "unknown"),
+                    "started": started,
+                })
+
+                age = self._parse_started_to_seconds(started)
+                if started and age < 10 and started != MediaMTXClient._last_restore_started:
+                    MediaMTXClient._last_restore_started = started
+                    await self._restore_after_restart()
+
+            except Exception as exc:
+                MediaMTXClient._info.clear()
+                MediaMTXClient._info.update({
+                    "connected": False,
+                    "restarted": False,
+                    "version": "unknown",
+                    "started": None
+                })
+                print(f"[Warning] Health check MediaMTX gagal atau server offline: {exc}", flush=True)
+            await asyncio.sleep(5)
+
+    async def _restore_after_restart(self):
+        if MediaMTXClient._restoring_after_restart:
+            return
+        MediaMTXClient._restoring_after_restart = True
+        try:
+            cached = dict(MediaMTXClient._ram_config)
+            paths_data = cached.pop("paths", {})
+            cached.pop("authInternalUsers", None)
+            cached.pop("pathDefaults", None)
+            if cached:
+                await self.patch_server_config(cached, persist=False)
+
+            if isinstance(paths_data, dict) and paths_data:
+                for path_name, path_config in paths_data.items():
+                    if not path_config or not isinstance(path_config, dict):
+                        continue
+
+                    try:
+                        encoded_name = quote(path_name, safe="")
+                        check_res = await self.client.get(f"{self.base_url}/config/paths/get/{encoded_name}")
+
+                        if check_res.status_code == 200:
+                            res = await self.client.patch(
+                                f"{self.base_url}/config/paths/patch/{encoded_name}",
+                                json=path_config
+                            )
+                        else:
+                            res = await self.client.post(
+                                f"{self.base_url}/config/paths/add/{encoded_name}",
+                                json=path_config
+                            )
+                        if res.status_code in (200, 201, 204):
+                            print(f"[Info] Path '{path_name}' sukses disimpan ke MediaMTX.", flush=True)
+                        else:
+                            print(f"[Warning] Gagal menyimpan path '{path_name}', status: {res.status_code}, respon: {res.text}", flush=True)
+
+                    except Exception as path_err:
+                        print(f"[Error] Terjadi kesalahan saat memulihkan path '{path_name}': {path_err}", flush=True)
+
+            for username, saved in MediaMTXClient._ram_internal_users.items():
+                permissions = saved.get("permissions", [])
+                current = (await self.list_internal_users()).get("items", [])
+                match = next((item for item in current if item.get("user") == username), None)
+                payload = {
+                    "user": username,
+                    "pass": saved.get("pass", ""),
+                    "ips": saved.get("ips", []),
+                    "permissions": permissions,
+                }
+                if match and match.get("id"):
+                    await self.client.patch(f"{self.base_url}/config/internal-users/patch/{match['id']}", json=payload)
+                else:
+                    await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+        except httpx.HTTPError as exc:
+            print(f"[Warning] Gagal restore konfigurasi setelah restart MediaMTX: {exc}")
+        finally:
+            MediaMTXClient._restoring_after_restart = False
 
     async def get_server_config(self):
         r = await self.client.get(f"{self.base_url}/config/global/get")
         r.raise_for_status()
+        j= r.json()
+        print(j, flush=True)
+        return j
+
+    async def list_internal_users(self):
+        r = await self.client.get(f"{self.base_url}/config/internal-users/list")
+        r.raise_for_status()
         return r.json()
 
-    async def patch_server_config(self, payload):
+    async def _sync_internal_users_to_json(self):
+        items = (await self.list_internal_users()).get("items", [])
+        users = {}
+        for item in items:
+            username = item.get("user", "")
+            if not username:
+                continue
+            saved = MediaMTXClient._ram_internal_users.get(username, {})
+            users[username] = {
+                "pass": saved.get("pass", "") if item.get("pass") == "<redacted>" else item.get("pass", ""),
+                "ips": item.get("ips", []),
+                "permissions": item.get("permissions", []),
+            }
+        await self._queue_save_to_json({"users": users})
+
+    async def create_internal_user(self, user: str, password: str, permissions: list[dict]):
+        payload = {"user": user, "pass": password, "ips": [], "permissions": permissions}
+        existing = (await self.list_internal_users()).get("items", [])
+        match = next((item for item in existing if item.get("user") == user), None)
+        if match and match.get("id"):
+            r = await self.client.patch(
+                f"{self.base_url}/config/internal-users/patch/{match['id']}",
+                json=payload,
+            )
+        else:
+            r = await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+        r.raise_for_status()
+        MediaMTXClient._ram_internal_users[user] = {"pass": password, "ips": [], "permissions": permissions}
+        await self._sync_internal_users_to_json()
+        return r.json()
+
+    async def update_internal_user(self, user_id: str, user: str, password: str | None, permissions: list[dict]):
+        existing = (await self.list_internal_users()).get("items", [])
+        previous = next((item for item in existing if item.get("id") == user_id), None)
+        previous_user = previous.get("user") if previous else None
+        payload = {"user": user, "permissions": permissions}
+        if password:
+            payload["pass"] = password
+        r = await self.client.patch(f"{self.base_url}/config/internal-users/patch/{user_id}", json=payload)
+        r.raise_for_status()
+        saved_password = password or MediaMTXClient._ram_internal_users.get(previous_user or user, {}).get("pass", "")
+        if previous_user and previous_user != user:
+            MediaMTXClient._ram_internal_users.pop(previous_user, None)
+        MediaMTXClient._ram_internal_users[user] = {"pass": saved_password, "ips": [], "permissions": permissions}
+        await self._sync_internal_users_to_json()
+        return r.json()
+
+    async def delete_internal_user(self, user_id: str):
+        existing = (await self.list_internal_users()).get("items", [])
+        previous = next((item for item in existing if item.get("id") == user_id), None)
+        r = await self.client.delete(f"{self.base_url}/config/internal-users/delete/{user_id}")
+        r.raise_for_status()
+        if previous:
+            MediaMTXClient._ram_internal_users.pop(previous.get("user"), None)
+        await self._sync_internal_users_to_json()
+
+    async def patch_server_config(self, payload, persist=True):
         try:
             cleaned_payload = {}
             for key, value in payload.items():
@@ -215,7 +401,8 @@ class MediaMTXClient:
                 )
 
             r.raise_for_status()
-            await self._queue_save_to_yaml(cleaned_payload)
+            if persist:
+                await self._queue_save_to_yaml(cleaned_payload)
             return r.json()
         except httpx.HTTPStatusError as exc:
             print(f"HTTP Error from MediaMTX: {exc.response.text}")
