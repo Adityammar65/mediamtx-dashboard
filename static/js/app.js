@@ -524,33 +524,83 @@ async function initInternalUsers() {
     const body = document.getElementById('internal-users-body');
     const status = document.getElementById('internal-user-status');
     if (!body) return;
+    let users = [];
     try {
         const result = await fetchAPI('/internal-users');
-        const users = (result.data || []).sort((a, b) => String(a.permissions?.[0]?.path || '').localeCompare(String(b.permissions?.[0]?.path || '')));
+        users = (result.data || []).sort((a, b) => String(a.user || '').localeCompare(String(b.user || '')));
         body.innerHTML = users.map(item => {
             const permissions = item.permissions || [];
-            const path = permissions[0]?.path || '';
-            const checks = ['read', 'publish', 'playback', 'api', 'metrics', 'pprof'].map(action => `<label class="mr-3 whitespace-nowrap"><input type="checkbox" data-permission="${action}" ${permissions.some(p => p.action === action) ? 'checked' : ''}> ${action}</label>`).join('');
-            return `<tr data-user-id="${escapeHtml(item.id || '')}" data-user="${escapeHtml(item.user || '')}" data-path="${escapeHtml(path)}"><td class="px-6 py-3"><input data-field="user" value="${escapeHtml(item.user || '')}" class="w-32 rounded border px-2 py-1"></td><td class="px-6 py-3"><input data-field="path" value="${escapeHtml(path)}" class="w-full min-w-64 rounded border px-2 py-1 font-mono"></td><td class="px-6 py-3 text-xs">${checks}</td><td class="px-6 py-3 whitespace-nowrap"><button type="button" data-action="save" class="mr-2 rounded bg-blue-600 px-3 py-1 text-white">Save</button><button type="button" data-action="delete" class="rounded bg-red-600 px-3 py-1 text-white">Delete</button></td></tr>`;
-        }).join('') || '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No users configured</td></tr>';
-    } catch (error) { body.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`; }
+            const rows = permissions.map(p => `<div class="font-mono text-xs">${escapeHtml(p.path || '(global)')} <span class="font-sans text-gray-500">[${escapeHtml(p.action)}]</span></div>`).join('');
+            const actions = permissions.map(p => `${escapeHtml(p.action)}:${escapeHtml(p.path || '(global)')}`).join(', ');
+            return `<tr data-user-id="${escapeHtml(item.id || '')}"><td class="px-6 py-3 font-mono text-sm">${escapeHtml(item.user || '')}</td><td class="px-6 py-3">${rows}</td><td class="px-6 py-3 text-xs">${escapeHtml(actions)}</td><td class="px-6 py-3 text-xs">${escapeHtml((item.ips || []).join(', '))}</td><td class="px-6 py-3 text-xs font-mono">${escapeHtml(item.id || '')}</td><td class="px-6 py-3 whitespace-nowrap"><button type="button" data-action="edit" class="mr-2 rounded bg-blue-600 px-3 py-1 text-white">Edit</button><button type="button" data-action="delete" class="rounded bg-red-600 px-3 py-1 text-white">Delete</button></td></tr>`;
+        }).join('') || '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">No users configured</td></tr>';
+    } catch (error) { body.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`; }
+    const pathsEl = document.getElementById('internal-user-paths');
+    const actions = ['read', 'publish', 'playback', 'api', 'metrics', 'pprof'];
+    const addPathRow = permission => {
+        const row = document.createElement('div');
+        row.className = 'rounded border p-3';
+        row.innerHTML = `<div class="flex gap-2"><input data-field="path" class="min-w-0 flex-1 rounded border px-2 py-1 font-mono text-sm" placeholder="Path or regex" value="${escapeHtml(permission?.path ?? '')}"><button type="button" data-remove-path class="rounded bg-red-50 px-2 text-red-600">Remove</button></div><div class="mt-2 flex flex-wrap gap-3 text-xs">${actions.map(action => `<label><input type="checkbox" data-path-action="${action}" ${permission?.action === action ? 'checked' : ''}> ${action}</label>`).join('')}</div>`;
+        pathsEl.append(row);
+    };
+    const resetForm = () => {
+        form.reset();
+        document.getElementById('internal-user-edit-id').value = '';
+        document.getElementById('internal-user-password').required = true;
+        document.getElementById('cancel-user-edit').classList.add('hidden');
+        form.querySelector('button[type="submit"]').textContent = 'Add user';
+        pathsEl.replaceChildren();
+        addPathRow({ path: '', action: 'read' });
+    };
+    resetForm();
+    document.getElementById('add-path-btn').onclick = () => addPathRow({});
+    document.getElementById('cancel-user-edit').onclick = resetForm;
+    pathsEl.onclick = event => { if (event.target.closest('[data-remove-path]')) event.target.closest('.rounded.border').remove(); };
     body.onclick = async event => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
         const row = button.closest('tr');
-        const permissions = [...row.querySelectorAll('[data-permission]:checked')].map(input => ({ action: input.dataset.permission, path: row.querySelector('[data-field="path"]').value.trim() }));
+        const item = users.find(user => String(user.id) === row.dataset.userId);
         try {
-            if (button.dataset.action === 'delete') await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'DELETE' });
-            else await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'PATCH', body: JSON.stringify({ user: row.querySelector('[data-field="user"]').value.trim(), permissions }) });
-            await initInternalUsers();
+            if (button.dataset.action === 'delete') {
+                await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'DELETE' });
+                await initInternalUsers();
+                return;
+            }
+            document.getElementById('internal-user-edit-id').value = item.id;
+            document.getElementById('internal-user-name').value = item.user || '';
+            document.getElementById('internal-user-password').value = '';
+            document.getElementById('internal-user-password').required = false;
+            document.getElementById('internal-user-ips').value = (item.ips || []).join(', ');
+            document.getElementById('cancel-user-edit').classList.remove('hidden');
+            form.querySelector('button[type="submit"]').textContent = 'Save changes';
+            pathsEl.replaceChildren();
+            (item.permissions || []).forEach(addPathRow);
+            form.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch (error) { showError(error.message); }
     };
-    form?.addEventListener('submit', async event => {
+    let submitting = false;
+    form.onsubmit = async event => {
         event.preventDefault();
-        const permissions = [...form.querySelectorAll('[name="new-permission"]:checked')].map(input => ({ action: input.value, path: document.getElementById('internal-user-path').value.trim() }));
-        if (!permissions.length) { status.textContent = 'Select at least one permission.'; return; }
-        try { await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user: document.getElementById('internal-user-name').value.trim(), password: document.getElementById('internal-user-password').value, permissions }) }); status.textContent = 'Saved.'; form.reset(); document.getElementById('internal-user-path').value = '~^atcs-kota/(.+)'; await initInternalUsers(); } catch (error) { status.textContent = error.message; }
-    }, { once: true });
+        if (submitting) return;
+        const permissions = [...pathsEl.children].flatMap(row => [...row.querySelectorAll('[data-path-action]:checked')].map(input => ({ action: input.dataset.pathAction, path: row.querySelector('[data-field="path"]').value.trim() })));
+        if (!permissions.length || [...pathsEl.children].some(row => !row.querySelector('[data-path-action]:checked'))) { status.textContent = 'Each path needs at least one permission.'; return; }
+        const user = document.getElementById('internal-user-name').value.trim();
+        const password = document.getElementById('internal-user-password').value;
+        const ips = document.getElementById('internal-user-ips').value.split(',').map(ip => ip.trim()).filter(Boolean);
+        const userId = document.getElementById('internal-user-edit-id').value;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitting = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+        try {
+            if (userId) await fetchAPI(`/internal-users/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify({ user, password, ips, permissions }) });
+            else await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user, password, ips, permissions }) });
+            status.textContent = 'Saved.';
+            await initInternalUsers();
+        } catch (error) { status.textContent = error.message; }
+        finally { submitting = false; submitBtn.disabled = false; submitBtn.textContent = userId ? 'Save changes' : 'Add user'; }
+    };
     loadConfigPathGroups();
 }
 

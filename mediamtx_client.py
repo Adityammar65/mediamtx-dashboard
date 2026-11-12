@@ -76,6 +76,8 @@ class MediaMTXClient:
     _yaml_path = Path("mediamtx.yml")
     _internalUsers = Path("internalUsers.json")
     _ram_internal_users = {}
+    # _ram_internal_users format (new):
+    # { "entry-id-from-mt": { "user": "username", "pass": "...", "ips": [], "permissions": [...] }, ... }
     _info = {"connected": False, "restarted": False, "version": "unknown", "started": None}
     _health_started = None
     _last_restore_started = None
@@ -105,9 +107,50 @@ class MediaMTXClient:
         try:
             if MediaMTXClient._internalUsers.exists():
                 data = json.loads(MediaMTXClient._internalUsers.read_text())
-                MediaMTXClient._ram_internal_users = data.get("users", {})
+                saved_entries = data.get("entries")
+                if isinstance(saved_entries, list):
+                    MediaMTXClient._ram_internal_users = {
+                        str(entry["id"]): entry
+                        for entry in saved_entries
+                        if entry.get("id") is not None
+                    }
+                else:
+                    MediaMTXClient._ram_internal_users = {
+                        f"legacy:{username}": {"id": f"legacy:{username}", "user": username, **entry}
+                        for username, entry in data.get("users", {}).items()
+                    }
         except (OSError, json.JSONDecodeError) as exc:
             print(f"[Warning] Gagal memuat internalUsers.json: {exc}")
+
+    @staticmethod
+    def _save_internal_users_cache():
+        entries = [e for e in MediaMTXClient._ram_internal_users.values() if e.get("id") is not None]
+        payload = {"version": 2, "entries": entries}
+        MediaMTXClient._internalUsers.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+
+    def _cached_user(self, item):
+        saved = MediaMTXClient._ram_internal_users.get(str(item.get("id")), {})
+        if not saved:
+            saved = next((entry for entry in MediaMTXClient._ram_internal_users.values()
+                          if (entry.get("id") is None or str(entry.get("id")).startswith("legacy:")) and entry.get("user") == item.get("user")), {})
+        return saved
+
+    @staticmethod
+    def _remember_internal_user(item, password=None):
+        entry_id = item.get("id")
+        if entry_id is None:
+            return
+        if password is None:
+            raise ValueError("password must be provided when caching an internal user")
+        previous = MediaMTXClient._ram_internal_users.get(str(entry_id), {})
+        MediaMTXClient._ram_internal_users[str(entry_id)] = {
+            "id": entry_id,
+            "user": item.get("user", previous.get("user", "")),
+            "pass": password if password is not None else previous.get("pass", ""),
+            "ips": item.get("ips", previous.get("ips", [])),
+            "permissions": item.get("permissions", previous.get("permissions", [])),
+        }
+        MediaMTXClient._save_internal_users_cache()
 
     def _load_initial_cache(self):
         """Memuat konfigurasi awal dari file yml ke RAM saat pertama kali inisialisasi."""
@@ -164,12 +207,10 @@ class MediaMTXClient:
 
     async def _queue_save_to_json(self, data: dict):
         async with self._cache_lock:
-            MediaMTXClient._ram_internal_users.update(data.get("users", {}))
-            payload = {
-                "version": 1,
-                "users": MediaMTXClient._ram_internal_users,
+            MediaMTXClient._ram_internal_users = {
+                str(entry["id"]): entry for entry in data.get("entries", []) if entry.get("id") is not None
             }
-            MediaMTXClient._internalUsers.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+            MediaMTXClient._save_internal_users_cache()
 
     async def _debounce_flush(self):
         """Menunggu hingga aktivitas konfigurasi mereda sebelum menulis ke disk."""
@@ -298,23 +339,54 @@ class MediaMTXClient:
                     except Exception as path_err:
                         print(f"[Error] Terjadi kesalahan saat memulihkan path '{path_name}': {path_err}", flush=True)
 
-            for username, saved in MediaMTXClient._ram_internal_users.items():
-                permissions = saved.get("permissions", [])
-                current = (await self.list_internal_users()).get("items", [])
-                match = next((item for item in current if item.get("user") == username), None)
+            current = (await self.list_internal_users()).get("items", [])
+            used_ids = set()
+            saved_snapshot = list(MediaMTXClient._ram_internal_users.values())
+            for saved in saved_snapshot:
+                username = saved.get("user", "")
                 payload = {
                     "user": username,
                     "pass": saved.get("pass", ""),
-                    "ips": saved.get("ips", []),
-                    "permissions": permissions,
+                    "ips": saved.get("ips") or [],
+                    "permissions": saved.get("permissions") or [],
                 }
+                entry_id = saved.get("id")
+                match = None
+                if entry_id is not None and not str(entry_id).startswith("legacy:"):
+                    match = next((item for item in current if str(item.get("id")) == str(entry_id)), None)
+                if match is None and (entry_id is None or str(entry_id).startswith("legacy:")):
+                    match = next((item for item in current if item.get("user") == username and str(item.get("id")) not in used_ids), None)
                 if match and match.get("id"):
-                    await self.client.patch(f"{self.base_url}/config/internal-users/patch/{match['id']}", json=payload)
+                    used_ids.add(str(match["id"]))
+                    response = await self.client.patch(f"{self.base_url}/config/internal-users/patch/{match['id']}", json=payload)
+                    response.raise_for_status()
+                    self._ram_internal_users[str(match["id"])] = {
+                        "id": match["id"],
+                        "user": username,
+                        "pass": payload["pass"],
+                        "ips": payload.get("ips") or [],
+                        "permissions": payload.get("permissions") or [],
+                    }
+                    if entry_id is None or str(entry_id).startswith("legacy:"):
+                        self._ram_internal_users.pop(str(entry_id), None)
                 else:
-                    await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+                    response = await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+                    response.raise_for_status()
+                    created = response.json()
+                    created_id = created.get("id")
+                    if created_id:
+                        used_ids.add(str(created_id))
+                        self._ram_internal_users[str(created_id)] = {
+                            "id": created_id,
+                            "user": username,
+                            "pass": payload["pass"],
+                            "ips": payload.get("ips") or [],
+                            "permissions": payload.get("permissions") or [],
+                        }
         except httpx.HTTPError as exc:
             print(f"[Warning] Gagal restore konfigurasi setelah restart MediaMTX: {exc}")
         finally:
+            self._save_internal_users_cache()
             MediaMTXClient._restoring_after_restart = False
 
     async def get_server_config(self):
@@ -331,58 +403,51 @@ class MediaMTXClient:
 
     async def _sync_internal_users_to_json(self):
         items = (await self.list_internal_users()).get("items", [])
-        users = {}
+        entries = []
         for item in items:
             username = item.get("user", "")
             if not username:
                 continue
-            saved = MediaMTXClient._ram_internal_users.get(username, {})
-            users[username] = {
-                "pass": saved.get("pass", "") if item.get("pass") == "<redacted>" else item.get("pass", ""),
-                "ips": item.get("ips", []),
-                "permissions": item.get("permissions", []),
-            }
-        await self._queue_save_to_json({"users": users})
+            saved = self._cached_user(item)
+            entry = dict(item)
+            entry["pass"] = saved.get("pass", "") if item.get("pass") == "<redacted>" else item.get("pass", "")
+            entry["ips"] = item.get("ips") or []
+            entries.append(entry)
+        await self._queue_save_to_json({"entries": entries})
 
-    async def create_internal_user(self, user: str, password: str, permissions: list[dict]):
-        payload = {"user": user, "pass": password, "ips": [], "permissions": permissions}
-        existing = (await self.list_internal_users()).get("items", [])
-        match = next((item for item in existing if item.get("user") == user), None)
-        if match and match.get("id"):
-            r = await self.client.patch(
-                f"{self.base_url}/config/internal-users/patch/{match['id']}",
-                json=payload,
-            )
-        else:
-            r = await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
-        r.raise_for_status()
-        MediaMTXClient._ram_internal_users[user] = {"pass": password, "ips": [], "permissions": permissions}
-        await self._sync_internal_users_to_json()
-        return r.json()
+    async def create_internal_user(self, user: str, password: str, permissions: list[dict], ips: list[str] | None = None):
+        payload = {"user": user, "pass": password, "ips": ips or [], "permissions": permissions}
+        response = await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+        response.raise_for_status()
+        created = response.json()
+        if created.get("id"):
+            self._remember_internal_user(created, password=password)
+            await self._sync_internal_users_to_json()
+            return created
+        return created
 
-    async def update_internal_user(self, user_id: str, user: str, password: str | None, permissions: list[dict]):
-        existing = (await self.list_internal_users()).get("items", [])
-        previous = next((item for item in existing if item.get("id") == user_id), None)
-        previous_user = previous.get("user") if previous else None
+    async def update_internal_user(self, user_id: str, user: str, password: str | None, permissions: list[dict], ips: list[str] | None = None):
+        previous = next((item for item in (await self.list_internal_users()).get("items", []) if str(item.get("id")) == str(user_id)), None)
+        if not previous:
+            raise HTTPException(status_code=404, detail="Internal user not found")
         payload = {"user": user, "permissions": permissions}
         if password:
             payload["pass"] = password
+        if ips is not None:
+            payload["ips"] = ips
         r = await self.client.patch(f"{self.base_url}/config/internal-users/patch/{user_id}", json=payload)
         r.raise_for_status()
-        saved_password = password or MediaMTXClient._ram_internal_users.get(previous_user or user, {}).get("pass", "")
-        if previous_user and previous_user != user:
-            MediaMTXClient._ram_internal_users.pop(previous_user, None)
-        MediaMTXClient._ram_internal_users[user] = {"pass": saved_password, "ips": [], "permissions": permissions}
+        saved_password = password if password else self._cached_user(previous).get("pass", "")
+        self._remember_internal_user({**previous, "user": user, "pass": saved_password, "permissions": permissions, "ips": ips if ips is not None else previous.get("ips", [])}, password=saved_password)
         await self._sync_internal_users_to_json()
         return r.json()
 
     async def delete_internal_user(self, user_id: str):
         existing = (await self.list_internal_users()).get("items", [])
-        previous = next((item for item in existing if item.get("id") == user_id), None)
+        previous = next((item for item in existing if str(item.get("id")) == str(user_id)), None)
         r = await self.client.delete(f"{self.base_url}/config/internal-users/delete/{user_id}")
         r.raise_for_status()
-        if previous:
-            MediaMTXClient._ram_internal_users.pop(previous.get("user"), None)
+        self._ram_internal_users.pop(str(user_id), None)
         await self._sync_internal_users_to_json()
 
     async def patch_server_config(self, payload, persist=True):
