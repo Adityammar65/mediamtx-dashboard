@@ -217,22 +217,46 @@ async def list_internal_users(client: MediaMTXClient = Depends(get_mediamtx_clie
 
 @app.post("/api/internal-users")
 async def create_internal_user(payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
-    user = str(payload.get("user", "")).strip()
-    password = str(payload.get("password", ""))
+    raw_user = payload.get("user")
+    raw_password = payload.get("password")
+    if not isinstance(raw_user, str) or not raw_user.strip():
+        raise HTTPException(400, "user must be a non-blank string")
+    if not isinstance(raw_password, str) or not raw_password.strip():
+        raise HTTPException(400, "password must be a non-blank string")
+    user = raw_user.strip()
+    password = raw_password
     permissions = payload.get("permissions", [])
-    if not user or not password or not isinstance(permissions, list) or not permissions:
-        raise HTTPException(400, "user, password and permissions are required")
-    data = await client.create_internal_user(user, password, permissions)
+    if not isinstance(permissions, list) or not permissions:
+        raise HTTPException(400, "permissions are required")
+    if any(not isinstance(permission, dict) or not permission.get("action") or not isinstance(permission.get("path"), str) for permission in permissions):
+        raise HTTPException(400, "Each permission requires action and path")
+    ips = payload.get("ips", [])
+    if not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips):
+        raise HTTPException(400, "ips must be a list of strings")
+    data = await client.create_internal_user(user, password, permissions, ips)
     return StandardResponse.success(data, "Internal user created")
 
 
 @app.patch("/api/internal-users/{user_id}")
 async def update_internal_user(user_id: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
-    user = str(payload.get("user", "")).strip()
+    raw_user = payload.get("user")
+    if not isinstance(raw_user, str) or not raw_user.strip():
+        raise HTTPException(400, "user must be a non-blank string")
+    user = raw_user.strip()
     permissions = payload.get("permissions", [])
-    if not user or not isinstance(permissions, list) or not permissions:
-        raise HTTPException(400, "user and permissions are required")
-    data = await client.update_internal_user(user_id, user, payload.get("password") or None, permissions)
+    if not isinstance(permissions, list) or not permissions:
+        raise HTTPException(400, "permissions are required")
+    password = payload.get("password")
+    if password is not None and not isinstance(password, str):
+        raise HTTPException(400, "password must be a string when provided")
+    if password is not None and password != "" and not password.strip():
+        raise HTTPException(400, "password must be a non-blank string")
+    if password == "":
+        password = None
+    ips = payload.get("ips", [])
+    if not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips):
+        raise HTTPException(400, "ips must be a list of strings")
+    data = await client.update_internal_user(user_id, user, payload.get("password") or None, permissions, ips)
     return StandardResponse.success(data, "Internal user updated")
 
 
