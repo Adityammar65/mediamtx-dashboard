@@ -8,6 +8,7 @@ import asyncio
 import secrets
 from datetime import datetime, timedelta
 import jwt
+import httpx
 
 from config import settings
 from deps import get_mediamtx_client
@@ -26,9 +27,7 @@ def read_log_file(path: str, lines: int = 100):
         with open(path, 'r') as f:
             all_lines = f.readlines()
 
-
         last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-
 
         parsed_lines = []
         for line in last_lines:
@@ -95,9 +94,11 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
+    client = get_mediamtx_client()
+    health_task = asyncio.create_task(client._cekMediamtxHealth())
     clean_task = asyncio.create_task(clean_old_logs())
     yield
+    health_task.cancel()
     clean_task.cancel()
     MediaMTXClient.force_flush_sync()
     client = get_mediamtx_client()
@@ -152,7 +153,7 @@ async def auth_middleware(request: Request, call_next):
                 status_code=401,
                 content={"detail": "Not authenticated"},
             )
-        
+
         try:
             decode_access_token(token)
         except HTTPException as e:
@@ -165,7 +166,7 @@ async def auth_middleware(request: Request, call_next):
                 status_code=401,
                 content={"detail": "Invalid authentication credentials"},
             )
-    
+
     response = await call_next(request)
     return response
 
@@ -175,12 +176,12 @@ async def login(response: Response, username: str = Body(...), password: str = B
     """Login endpoint to authenticate user and create JWT token."""
     if username != settings.AUTH_USERNAME or password != settings.AUTH_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     if not settings.JWT_SECRET:
         raise HTTPException(status_code=500, detail="JWT_SECRET not configured")
-    
+
     token = create_access_token({"sub": username})
-    
+
 
     cookie_kwargs = {
         "key": "access_token",
@@ -189,12 +190,12 @@ async def login(response: Response, username: str = Body(...), password: str = B
         "httponly": True,
         "samesite": "Lax",
     }
-    
+
     if settings.JWT_SECURE_COOKIE:
         cookie_kwargs["secure"] = True
-    
+
     response.set_cookie(**cookie_kwargs)
-    
+
     return StandardResponse.success({
         "token": token,
         "expires_in": settings.JWT_EXPIRE_MINUTES * 60
@@ -208,6 +209,39 @@ async def logout(response: Response):
     return StandardResponse.success(None, "Logged out successfully")
 
 
+@app.get("/api/internal-users")
+async def list_internal_users(client: MediaMTXClient = Depends(get_mediamtx_client)):
+    data = await client.list_internal_users()
+    return StandardResponse.success(data.get("items", []), "Internal users retrieved")
+
+
+@app.post("/api/internal-users")
+async def create_internal_user(payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
+    user = str(payload.get("user", "")).strip()
+    password = str(payload.get("password", ""))
+    permissions = payload.get("permissions", [])
+    if not user or not password or not isinstance(permissions, list) or not permissions:
+        raise HTTPException(400, "user, password and permissions are required")
+    data = await client.create_internal_user(user, password, permissions)
+    return StandardResponse.success(data, "Internal user created")
+
+
+@app.patch("/api/internal-users/{user_id}")
+async def update_internal_user(user_id: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
+    user = str(payload.get("user", "")).strip()
+    permissions = payload.get("permissions", [])
+    if not user or not isinstance(permissions, list) or not permissions:
+        raise HTTPException(400, "user and permissions are required")
+    data = await client.update_internal_user(user_id, user, payload.get("password") or None, permissions)
+    return StandardResponse.success(data, "Internal user updated")
+
+
+@app.delete("/api/internal-users/{user_id}")
+async def delete_internal_user(user_id: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    await client.delete_internal_user(user_id)
+    return StandardResponse.success(None, "Internal user deleted")
+
+
 @app.get("/api/server/health")
 async def server_health(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_server_health()
@@ -218,6 +252,14 @@ async def server_health(client: MediaMTXClient = Depends(get_mediamtx_client)):
 async def server_config(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_server_config()
     return StandardResponse.success(data, "MediaMTX configuration")
+
+
+@app.get("/api/server/public-address")
+async def server_public_address():
+    return StandardResponse.success(
+        {"host": settings.MEDIAMTX_PUBLIC_HOST.strip()},
+        "MediaMTX public address",
+    )
 
 
 @app.patch("/api/server/config")
@@ -285,6 +327,16 @@ async def list_streams(client: MediaMTXClient = Depends(get_mediamtx_client)):
 async def streams_summary(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_streams_summary()
     return StandardResponse.success(data, "Streams summary")
+
+
+@app.get("/api/streams/{name:path}/viewers")
+async def stream_viewers(name: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    try:
+        data = await client.get_stream_viewers(name)
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
+        print(f"[Warning] MediaMTX viewer count unavailable ({type(exc).__name__})")
+        data = {"viewer_count": 0, "status": "unavailable"}
+    return StandardResponse.success(data, "Stream viewer count")
 
 
 @app.get("/api/streams/{name:path}")
@@ -478,7 +530,7 @@ def should_delete_entry(timestamp, start=None, end=None):
 
 def filter_log_lines(lines, preset=None, start=None, end=None):
     """Filter log lines, returning (kept_lines, deleted_count).
-    
+
     Presets:
     - 'week': delete entries from 7 days ago up to 48 hours ago
     - 'month': delete entries from 30 days ago up to 48 hours ago
@@ -486,14 +538,14 @@ def filter_log_lines(lines, preset=None, start=None, end=None):
     """
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
-    
+
     if preset == 'week':
         start = now - timedelta(days=7)
         end = now - timedelta(seconds=LOG_SAFETY_CUTOFF_SECONDS)
     elif preset == 'month':
         start = now - timedelta(days=30)
         end = now - timedelta(seconds=LOG_SAFETY_CUTOFF_SECONDS)
-    
+
     kept = []
     deleted = 0
     for line in lines:
@@ -514,14 +566,14 @@ async def delete_logs(
     try:
         if not os.path.exists(log_path):
             return StandardResponse.error(f"Log file not found: {log_path}")
-        
+
         with open(log_path, 'r') as f:
             lines = f.readlines()
-        
+
         preset = payload.get('preset')
         start_str = payload.get('start')
         end_str = payload.get('end')
-        
+
         start = None
         end = None
         if start_str:
@@ -530,12 +582,12 @@ async def delete_logs(
         if end_str:
             from datetime import datetime
             end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-        
+
         kept_lines, deleted_count = filter_log_lines(lines, preset, start, end)
-        
+
         with open(log_path, 'w') as f:
             f.writelines(kept_lines)
-        
+
         return StandardResponse.success({"deleted_count": deleted_count}, f"Deleted {deleted_count} log entries")
     except Exception as e:
         return StandardResponse.error(f"Failed to delete log entries: {str(e)}")
@@ -569,7 +621,7 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
                 if file_size_mb > max_size_mb or len(lines) > max_lines:
 
                     kept_lines, deleted_count = filter_log_lines(lines)
-                    
+
 
 
                     if len(kept_lines) > max_lines:
@@ -578,7 +630,7 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
 
                         kept_lines = kept_lines[-max_lines:]
                         deleted_count = len(lines) - len(kept_lines)
-                    
+
                     with open(log_path, 'w') as f:
                         f.writelines(kept_lines)
                     print(f"[Info] Log cleaned up. Size before: {file_size_mb:.2f}MB, lines before: {len(lines)}, deleted: {deleted_count}")

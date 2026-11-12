@@ -46,6 +46,8 @@ File default `docker-compose.yml` memakai bridge network. Dashboard mengakses Me
 docker compose up -d
 ```
 
+Jika dashboard dan MediaMTX dapat diakses melalui IP/domain publik yang berbeda, atur `MEDIAMTX_PUBLIC_HOST` di `.env` ke hostname atau IP publik MediaMTX (tanpa skema dan port), misalnya `MEDIAMTX_PUBLIC_HOST=203.0.113.10`. URL output pada halaman detail path akan menggunakan host tersebut dengan port dari konfigurasi listener MediaMTX. Pastikan port listener dapat diakses dari jaringan pengguna. Jika tidak diatur, dashboard tetap menggunakan host dashboard untuk listener wildcard/lokal.
+
 Untuk membaca metrik sistem host, gunakan konfigurasi host network:
 
 ```sh
@@ -65,6 +67,7 @@ Mode host menjalankan dashboard dan Node Exporter di host network. Mode ini mema
 | PATCH | `/api/config/path-defaults` | Mengubah konfigurasi default path di runtime MediaMTX |
 | GET | `/api/streams` | Daftar stream: online/offline, penonton, trafik, URL tonton |
 | GET | `/api/streams/summary` | Angka ringkas untuk kartu statistik |
+| GET | `/api/streams/{name}/viewers` | Jumlah pembaca lintas protokol dan 60 sampel riwayat; polling halaman detail setiap 5 detik |
 | GET | `/api/streams/{name}` | Detail satu stream |
 | GET | `/api/paths` | Daftar konfigurasi path |
 | POST | `/api/paths` | Tambah path/kamera |
@@ -80,9 +83,11 @@ Contoh body untuk menambah kamera IP:
 {
   "name": "kamera-1",
   "source": "rtsp://admin:admin@192.168.1.20:554/stream1",
-  "source_on_demand": true
+  "sourceOnDemand": true
 }
 ```
+
+Field opsional lainnya memakai nama MediaMTX: `sourceOnDemandStartTimeout`, `sourceOnDemandCloseAfter`, `maxReaders`, dan `sourceRedirect`.
 
 Untuk stream yang dikirim dari OBS/FFmpeg, cukup `{"name": "kamera-1"}` (source default `publisher`).
 
@@ -184,9 +189,11 @@ Contoh body untuk menambah kamera IP:
 {
   "name": "kamera-1",
   "source": "rtsp://admin:admin@192.168.1.20:554/stream1",
-  "source_on_demand": true
+  "sourceOnDemand": true
 }
 ```
+
+Field opsional lainnya memakai nama MediaMTX: `sourceOnDemandStartTimeout`, `sourceOnDemandCloseAfter`, `maxReaders`, dan `sourceRedirect`.
 
 Untuk stream yang dikirim dari OBS/FFmpeg, cukup `{"name": "kamera-1"}` (source default `publisher`).
 
