@@ -5,3 +5,4 @@ pydantic-settings>=2.2
 PyJWT>=2.8
 dotenv
 PyYAML
+argon2-cffi>=23.1

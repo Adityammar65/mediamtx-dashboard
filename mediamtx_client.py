@@ -9,6 +9,25 @@ import yaml
 from fastapi import HTTPException
 
 from config import settings
+from argon2 import PasswordHasher
+
+
+_PW_HASHER = PasswordHasher()
+_INTERNAL_HASH_PREFIXES = ("argon2:", "sha256:")
+
+
+def _hash_internal_password(password: str) -> str:
+    return _PW_HASHER.hash(password)
+
+
+def _is_internal_password_hashed(value) -> bool:
+    return isinstance(value, str) and value.startswith(_INTERNAL_HASH_PREFIXES)
+
+
+def _prepare_internal_password(value) -> str:
+    if _is_internal_password_hashed(value):
+        return value
+    return _hash_internal_password(value) if value else ""
 
 
 _SENSITIVE_QUERY_KEYS = {
