@@ -547,6 +547,7 @@ async function initInternalUsers() {
         form.reset();
         document.getElementById('internal-user-edit-id').value = '';
         document.getElementById('internal-user-password').required = true;
+        document.getElementById('internal-user-password').placeholder = '';
         document.getElementById('cancel-user-edit').classList.add('hidden');
         form.querySelector('button[type="submit"]').textContent = 'Add user';
         pathsEl.replaceChildren();
@@ -571,6 +572,7 @@ async function initInternalUsers() {
             document.getElementById('internal-user-name').value = item.user || '';
             document.getElementById('internal-user-password').value = '';
             document.getElementById('internal-user-password').required = false;
+            document.getElementById('internal-user-password').placeholder = 'Leave blank to keep current password';
             document.getElementById('internal-user-ips').value = (item.ips || []).join(', ');
             document.getElementById('cancel-user-edit').classList.remove('hidden');
             form.querySelector('button[type="submit"]').textContent = 'Save changes';
@@ -601,7 +603,6 @@ async function initInternalUsers() {
         } catch (error) { status.textContent = error.message; }
         finally { submitting = false; submitBtn.disabled = false; submitBtn.textContent = userId ? 'Save changes' : 'Add user'; }
     };
-    loadConfigPathGroups();
 }
 
 function bindPageEvents(page) {

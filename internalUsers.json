@@ -2,8 +2,7 @@
   "version": 2,
   "entries": [
     {
-      "id": "39e47658-1b25-45e3-99d3-721b774db642",
-      "pos": 1,
+      "id": "83a5c0ea-816f-4b7c-8865-195a554cb051",
       "user": "any",
       "pass": "",
       "ips": [],
@@ -23,31 +22,9 @@
       ]
     },
     {
-      "id": "701d429e-c31c-4392-8afe-7eaebb46fcb7",
-      "pos": 2,
-      "user": "any",
-      "pass": "",
-      "ips": [],
-      "permissions": [
-        {
-          "action": "api",
-          "path": ""
-        },
-        {
-          "action": "metrics",
-          "path": ""
-        },
-        {
-          "action": "pprof",
-          "path": ""
-        }
-      ]
-    },
-    {
-      "id": "e40e7ab1-2311-4873-bf5b-ca99ad5d39c8",
-      "pos": 3,
+      "id": "7d2bd56e-da88-4b6e-8f52-16d786ccfb21",
       "user": "p",
-      "pass": "plenger",
+      "pass": "argon2:$argon2id$v=19$m=65536,t=3,p=4$VVL/aVGChRmcaRchIJfPjg$vRxNUmBsJwk6yGXe5QLckPVwbtX1RXkSsmnw/xZyh0k",
       "ips": [],
       "permissions": [
         {
@@ -65,8 +42,7 @@
       ]
     },
     {
-      "id": "6d138aea-4de8-45ac-aafb-8f851d871790",
-      "pos": 4,
+      "id": "0970a402-54b8-4e27-89d8-d5d1dbac44e7",
       "user": "y",
       "pass": "",
       "ips": [

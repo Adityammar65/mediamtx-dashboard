@@ -246,10 +246,13 @@ async def update_internal_user(user_id: str, payload: dict = Body(...), client: 
     permissions = payload.get("permissions", [])
     if not isinstance(permissions, list) or not permissions:
         raise HTTPException(400, "permissions are required")
-    if "password" in payload and payload.get("password") is not None and not isinstance(payload.get("password"), str):
+    password = payload.get("password")
+    if password is not None and not isinstance(password, str):
         raise HTTPException(400, "password must be a string when provided")
-    if "password" in payload and payload.get("password") is not None and not payload.get("password").strip():
+    if password is not None and password != "" and not password.strip():
         raise HTTPException(400, "password must be a non-blank string")
+    if password == "":
+        password = None
     ips = payload.get("ips", [])
     if not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips):
         raise HTTPException(400, "ips must be a list of strings")
