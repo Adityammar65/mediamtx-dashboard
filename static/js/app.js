@@ -26,8 +26,13 @@ function formatNumber(num) {
 
 function getUptimeSeconds(startedString) {
     if (!startedString) return 0;
-    const startTime = new Date(startedString).getTime();
-    const now = Date.getTime ? Date.now() : new Date().getTime();
+    if (typeof startedString === 'number') {
+            return startedString > 10000000000 ? Math.floor(startedString / 1000) : startedString;
+        }
+    const cleanStarted = String(startedString).replace(/([+-]\d{2}:\d{2}|Z)$/, '');
+    const startTime = new Date(cleanStarted).getTime();
+    if (isNaN(startTime)) return 0;
+    const now = Date.now();
     const diffSeconds = Math.floor((now - startTime) / 1000);
     return diffSeconds > 0 ? diffSeconds : 0;
 }
@@ -397,14 +402,14 @@ function initSidebar() {
     });
 
 
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', () => {
+    document.querySelector('nav[aria-label="Main navigation"]')?.addEventListener('click', event => {
+        if (event.target.closest('.nav-link')) {
             if (window.innerWidth < 1024) {
                 sidebar.classList.remove('mobile-open');
                 sidebarOverlay.classList.add('hidden');
                 document.body.style.overflow = '';
             }
-        });
+        }
     });
 
     logoutButton.addEventListener('click', async () => {
@@ -430,6 +435,7 @@ const pageTitleMap = {
     'config-global': 'Configuration - Global',
     'config-paths': 'Configuration - Paths',
     'config-defaults': 'Configuration - Path Defaults',
+        'internal-users': 'Internal Users',
     'runtime-hls': 'Runtime - HLS',
     'runtime-rtsp': 'Runtime - RTSP',
     'runtime-rtmp': 'Runtime - RTMP',
@@ -439,6 +445,18 @@ const pageTitleMap = {
 function getPageFromHash() {
     const hash = window.location.hash.slice(1);
     return hash.split('/')[0] || 'dashboard';
+}
+
+function getConfigPathGroupFromHash() {
+    const hash = window.location.hash.slice(1);
+    const groupStart = 'config-paths/';
+    if (!hash.startsWith(groupStart)) return null;
+
+    try {
+        return decodeURIComponent(hash.slice(groupStart.length));
+    } catch {
+        return null;
+    }
 }
 
 function getPathNameFromHash() {
@@ -452,7 +470,7 @@ function getPathNameFromHash() {
 }
 
 async function navigateToPage(page, pathName = null) {
-    const knownPages = ['dashboard', 'streams', 'path-detail', 'config-global', 'config-defaults', 'runtime-hls', 'runtime-rtsp', 'runtime-rtmp', 'runtime-logs', 'config-paths'];
+    const knownPages = ['dashboard', 'streams', 'path-detail', 'config-global', 'config-defaults', 'runtime-hls', 'runtime-rtsp', 'runtime-rtmp', 'runtime-logs', 'config-paths', 'internal-users'];
     const template = knownPages.includes(page) ? page : 'placeholder';
     const content = document.getElementById('page-content');
 
@@ -477,14 +495,20 @@ async function navigateToPage(page, pathName = null) {
 
 
         document.querySelectorAll('.nav-link').forEach(link => {
+            const configPathGroup = getConfigPathGroupFromHash();
+            const isConfigPathGroupLink = link.hasAttribute('data-config-path-group');
             link.classList.toggle(
                 'nav-active',
-                link.dataset.page === page || (page === 'path-detail' && link.dataset.page === 'streams'),
+                isConfigPathGroupLink
+                    ? page === 'config-paths' && configPathGroup === link.dataset.configPathGroup
+                    : link.dataset.page === page || (page === 'path-detail' && link.dataset.page === 'streams'),
             );
         });
         currentPathName = page === 'path-detail' ? pathName : null;
         document.getElementById('page-title').textContent = page === 'path-detail'
             ? (pathName || 'Path Detail')
+            : page === 'config-paths' && getConfigPathGroupFromHash() !== null
+                ? `${pageTitleMap[page]} - ${getConfigPathGroupFromHash() || 'Tanpa grup'}`
             : pageTitleMap[page] || 'Dashboard';
 
         currentPage = page;
@@ -493,6 +517,41 @@ async function navigateToPage(page, pathName = null) {
         content.innerHTML = `<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">Error: ${escapeHtml(error.message)}</div>`;
         setConnectionStatus(false);
     }
+}
+
+async function initInternalUsers() {
+    const form = document.getElementById('internal-user-form');
+    const body = document.getElementById('internal-users-body');
+    const status = document.getElementById('internal-user-status');
+    if (!body) return;
+    try {
+        const result = await fetchAPI('/internal-users');
+        const users = (result.data || []).sort((a, b) => String(a.permissions?.[0]?.path || '').localeCompare(String(b.permissions?.[0]?.path || '')));
+        body.innerHTML = users.map(item => {
+            const permissions = item.permissions || [];
+            const path = permissions[0]?.path || '';
+            const checks = ['read', 'publish', 'playback', 'api', 'metrics', 'pprof'].map(action => `<label class="mr-3 whitespace-nowrap"><input type="checkbox" data-permission="${action}" ${permissions.some(p => p.action === action) ? 'checked' : ''}> ${action}</label>`).join('');
+            return `<tr data-user-id="${escapeHtml(item.id || '')}" data-user="${escapeHtml(item.user || '')}" data-path="${escapeHtml(path)}"><td class="px-6 py-3"><input data-field="user" value="${escapeHtml(item.user || '')}" class="w-32 rounded border px-2 py-1"></td><td class="px-6 py-3"><input data-field="path" value="${escapeHtml(path)}" class="w-full min-w-64 rounded border px-2 py-1 font-mono"></td><td class="px-6 py-3 text-xs">${checks}</td><td class="px-6 py-3 whitespace-nowrap"><button type="button" data-action="save" class="mr-2 rounded bg-blue-600 px-3 py-1 text-white">Save</button><button type="button" data-action="delete" class="rounded bg-red-600 px-3 py-1 text-white">Delete</button></td></tr>`;
+        }).join('') || '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No users configured</td></tr>';
+    } catch (error) { body.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`; }
+    body.onclick = async event => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const row = button.closest('tr');
+        const permissions = [...row.querySelectorAll('[data-permission]:checked')].map(input => ({ action: input.dataset.permission, path: row.querySelector('[data-field="path"]').value.trim() }));
+        try {
+            if (button.dataset.action === 'delete') await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'DELETE' });
+            else await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'PATCH', body: JSON.stringify({ user: row.querySelector('[data-field="user"]').value.trim(), permissions }) });
+            await initInternalUsers();
+        } catch (error) { showError(error.message); }
+    };
+    form?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const permissions = [...form.querySelectorAll('[name="new-permission"]:checked')].map(input => ({ action: input.value, path: document.getElementById('internal-user-path').value.trim() }));
+        if (!permissions.length) { status.textContent = 'Select at least one permission.'; return; }
+        try { await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user: document.getElementById('internal-user-name').value.trim(), password: document.getElementById('internal-user-password').value, permissions }) }); status.textContent = 'Saved.'; form.reset(); document.getElementById('internal-user-path').value = '~^atcs-kota/(.+)'; await initInternalUsers(); } catch (error) { status.textContent = error.message; }
+    }, { once: true });
+    loadConfigPathGroups();
 }
 
 function bindPageEvents(page) {
@@ -526,6 +585,8 @@ function bindPageEvents(page) {
     if (page === 'path-detail') {
         document.getElementById('path-detail-test')?.addEventListener('click', testPathPreview);
         document.getElementById('path-detail-copy-all')?.addEventListener('click', copyAllPathOutputUrls);
+        document.getElementById('path-detail-output-username')?.addEventListener('input', updatePathOutputCredentials);
+        document.getElementById('path-detail-output-password')?.addEventListener('input', updatePathOutputCredentials);
         document.getElementById('path-detail-edit')?.addEventListener('click', () => {
                 if (currentPathName && pathDetailState?.configAvailable) window.editPath(currentPathName);
         });
@@ -655,6 +716,9 @@ async function loadPageData(page) {
         case 'config-global':
             await loadConfigGlobal();
             break;
+        case 'internal-users':
+            initInternalUsers();
+            break;
         case 'config-defaults':
             await loadConfigDefaults();
             break;
@@ -721,20 +785,6 @@ async function loadDashboard() {
         renderSessionsError();
     }
 
-
-    try {
-        const health = await fetchAPI('/server/health');
-        if (health.success) {
-            renderServerStatus(health.data);
-        } else {
-            renderServerStatusError();
-        }
-    } catch (e) {
-        showError('server/health: ' + e.message);
-        renderServerStatusError();
-    }
-
-
     const totalPaths = document.getElementById('server-total-paths');
     try {
         const paths = await fetchAPI('/paths');
@@ -748,9 +798,6 @@ async function loadDashboard() {
         showError('paths: ' + e.message);
         totalPaths.textContent = '-';
     }
-
-
-
 
     setConnectionStatus(anySuccess);
 }
@@ -948,12 +995,28 @@ function renderDashboardSessions(sessions) {
     `).join('');
 }
 
+async function cekHealth() {
+    try {
+        const health = await fetchAPI('/server/health');
+        if (currentPage != 'dashboard') {
+            setConnectionStatus(health.success);
+            return;
+        }
+        if (health.success) {
+            renderServerStatus(health.data);
+        } else {
+            renderServerStatusError();
+        }
+  } catch (e) {
+      showError('server/health: ' + e.message);
+      renderServerStatusError();
+  }
+}
+
 function renderServerConfig(config) {
 
     const paths = config.paths || {};
     const pathCount = Object.keys(paths).length;
-
-
 
     document.getElementById('server-total-paths').textContent = pathCount;
 }
@@ -969,7 +1032,6 @@ async function loadStreams() {
     try {
         const paths = await fetchAPI('/streams');
         if (paths.success) {
-            allPaths = paths.data.items || [];
             allStreams = paths.data.items || [];
             streamsCurrentPage = 1;
             renderStreams(allStreams);
@@ -1002,10 +1064,11 @@ async function loadPathDetail(pathName) {
     contentEl.classList.remove('hidden');
     pathDetailState = null;
 
-    const [configResult, runtimeResult, serverConfigResult] = await Promise.allSettled([
+    const [configResult, runtimeResult, serverConfigResult, publicAddressResult] = await Promise.allSettled([
         fetchAPI(`/paths/${encodeURIComponent(pathName)}`),
         fetchAPI(`/streams/${encodeURIComponent(pathName)}`),
         fetchAPI('/server/config'),
+        fetchAPI('/server/public-address'),
     ]);
     if (loadId !== pathDetailLoadId || currentPage !== 'path-detail' || currentPathName !== pathName) return;
 
@@ -1046,6 +1109,10 @@ async function loadPathDetail(pathName) {
         serverConfig: serverConfigResult.status === 'fulfilled' && serverConfigResult.value.success
             ? serverConfigResult.value.data
             : null,
+        mediaMtxPublicHost: publicAddressResult.status === 'fulfilled' && publicAddressResult.value.success
+            ? publicAddressResult.value.data.host
+            : '',
+        outputCredentials: { username: '', password: '' },
         outputUrls: [],
     };
     renderPathDetail();
@@ -1062,6 +1129,11 @@ async function loadPathDetail(pathName) {
             ? serverConfigResult.reason.message
             : serverConfigResult.value.message || 'MediaMTX returned an unsuccessful configuration response';
         showPathNotice(`Server protocol configuration is unavailable: ${message}`, 'warning');
+    } else if (publicAddressResult.status === 'rejected' || !publicAddressResult.value.success) {
+        const message = publicAddressResult.status === 'rejected'
+            ? publicAddressResult.reason.message
+            : publicAddressResult.value.message || 'MediaMTX public address is unavailable';
+        showPathNotice(`MediaMTX public address is unavailable; using the dashboard host: ${message}`, 'warning');
     }
 }
 
@@ -1129,7 +1201,7 @@ function encodePathSegments(pathName) {
     return pathName.split('/').map(segment => encodeURIComponent(segment)).join('/');
 }
 
-function getListenerUrl(address, scheme, pathName, suffix = '') {
+function getListenerUrl(address, scheme, pathName, suffix = '', publicHost = '') {
     if (typeof address !== 'string' || !address.trim()) return null;
     const match = address.trim().match(/^(?:\[([^\]]+)\]|([^:]*)):(\d+)$/);
     if (!match) return null;
@@ -1140,47 +1212,57 @@ function getListenerUrl(address, scheme, pathName, suffix = '') {
     const isWildcardOrLocal = !bindHost ||
         ['0.0.0.0', '::', '::1', 'localhost', '127.0.0.1'].includes(normalizedBindHost) ||
         normalizedBindHost.startsWith('127.');
-    const host = isWildcardOrLocal ? window.location.hostname : bindHost;
+    const configuredPublicHost = typeof publicHost === 'string' ? publicHost.trim() : '';
+    const host = configuredPublicHost || (isWildcardOrLocal ? window.location.hostname : bindHost);
     if (!host) return null;
 
     const formattedHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
     return `${scheme}://${formattedHost}:${port}/${encodePathSegments(pathName)}${suffix}`;
 }
 
-function getPathOutputUrls(serverConfig, pathName) {
+function getPathOutputUrls(serverConfig, pathName, publicHost, credentials = {}) {
     if (!serverConfig) return [];
     const outputs = [];
     const addOutput = (label, url, vlcCompatible = false) => {
-        if (url) outputs.push({ label, url, vlcCompatible });
+        if (url) {
+            const username = encodeURIComponent(credentials.username || '');
+            const password = encodeURIComponent(credentials.password || '');
+            const auth = username || password ? `${username}:${password}@` : '';
+            outputs.push({
+                label,
+                url: auth ? url.replace('://', `://${auth}`) : url,
+                vlcCompatible,
+            });
+        }
     };
 
     if (!serverConfig.rtspEncryption || serverConfig.rtspEncryption !== 'strict') {
-        addOutput('RTSP', getListenerUrl(serverConfig.rtspAddress, 'rtsp', pathName), true);
+        addOutput('RTSP', getListenerUrl(serverConfig.rtspAddress, 'rtsp', pathName, '', publicHost), true);
     }
 
     const rtmpEncryption = serverConfig.rtmpEncryption || 'no';
     if (serverConfig.rtmp === true && rtmpEncryption !== 'strict') {
-        addOutput('RTMP', getListenerUrl(serverConfig.rtmpAddress, 'rtmp', pathName), true);
+        addOutput('RTMP', getListenerUrl(serverConfig.rtmpAddress, 'rtmp', pathName, '', publicHost), true);
     }
 
     if (serverConfig.hls === true) {
         const scheme = serverConfig.hlsEncryption === true ? 'https' : 'http';
-        addOutput('HLS', getListenerUrl(serverConfig.hlsAddress, scheme, pathName, '/index.m3u8'), true);
+        addOutput('HLS', getListenerUrl(serverConfig.hlsAddress, scheme, pathName, '/index.m3u8', publicHost), true);
     }
 
     if (serverConfig.webrtc === true) {
         const scheme = serverConfig.webrtcEncryption === true ? 'https' : 'http';
-        addOutput('WebRTC', getListenerUrl(serverConfig.webrtcAddress, scheme, pathName));
+        addOutput('WebRTC', getListenerUrl(serverConfig.webrtcAddress, scheme, pathName, '', publicHost));
     }
     return outputs;
 }
 
 function renderPathDetail() {
     if (!pathDetailState) return;
-    const { name, config, configAvailable, runtime, serverConfig } = pathDetailState;
+    const { name, config, configAvailable, runtime, serverConfig, mediaMtxPublicHost } = pathDetailState;
     const status = getPathRuntimeStatus(runtime, configAvailable, pathDetailState.runtimeAvailable);
     const source = getPathSource(config, runtime);
-    const outputs = getPathOutputUrls(serverConfig, name);
+    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, pathDetailState.outputCredentials);
     pathDetailState.outputUrls = outputs;
 
     document.getElementById('path-detail-summary-name').textContent = name;
@@ -1204,6 +1286,19 @@ function renderPathDetail() {
     document.getElementById('path-detail-delete').title = configAvailable
         ? ''
         : 'No specific path configuration is available to delete.';
+    document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
+    renderPathOutputRows(outputs);
+}
+
+function updatePathOutputCredentials() {
+    if (!pathDetailState) return;
+    pathDetailState.outputCredentials = {
+        username: document.getElementById('path-detail-output-username').value,
+        password: document.getElementById('path-detail-output-password').value,
+    };
+    const { serverConfig, name, mediaMtxPublicHost, outputCredentials } = pathDetailState;
+    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, outputCredentials);
+    pathDetailState.outputUrls = outputs;
     document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
     renderPathOutputRows(outputs);
 }
@@ -1627,6 +1722,10 @@ function initAmsImport() {
             const data = result.data;
             const failures = data.failed ? ` ${data.failed} failed: ${data.errors.join('; ')}` : '';
             alert(`${data.imported} of ${data.total} stream(s) imported.${failures}`);
+            if (data.imported > 0 && window.location.hash !== '#config-paths') {
+                currentRoute = '#config-paths';
+                window.location.hash = '#config-paths';
+            }
             await loadConfigPaths();
         } catch (e) {
             alert(`Unable to import AMS export: ${e.message}`);
@@ -2184,6 +2283,7 @@ form?.addEventListener('submit', async (e) => {
 // --- Config Paths ---
 
 let allConfigPaths = [];
+let cachedInternalUsers = [];
 let configPathsCurrentPage = 1;
 const CONFIG_PATHS_PER_PAGE = 10;
 
@@ -2192,6 +2292,7 @@ async function loadConfigPaths() {
         const paths = await fetchAPI('/paths');
         if (paths.success) {
             allConfigPaths = paths.data.items || [];
+            renderConfigPathGroups(allConfigPaths);
             configPathsCurrentPage = 1;
             renderConfigPaths(allConfigPaths);
         }
@@ -2202,14 +2303,140 @@ async function loadConfigPaths() {
     }
 }
 
-function renderConfigPaths(paths) {
-    const tbody = document.getElementById('config-paths-table-body');
-    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
+async function loadConfigPathGroups() {
+  try {
+          const [pathsRes, usersRes] = await Promise.all([
+              fetchAPI('/paths'),
+              fetchAPI('/internal-users')
+          ]);
+          if (!pathsRes.success) throw new Error(pathsRes.message || 'Unable to load application groups');
 
-    const filtered = paths.filter(p =>
-        [p.name, p.source, p.fallback, p.source_redirect]
+          cachedInternalUsers = usersRes.success ? (usersRes.data || []) : [];
+          renderConfigPathGroups(pathsRes.data.items || []);
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+function formatGroupLabel(groupName) {
+    if (!groupName) return 'Tanpa grup';
+    return groupName.charAt(0).toUpperCase() + groupName.slice(1);
+}
+
+function getCanonicalGroupName(permPath) {
+    if (!permPath) return '';
+    if (permPath.startsWith('~')) {
+        // Remove ~^ prefix
+        let clean = permPath.replace(/^~\^?/, '');
+        // Take everything before the first / or regex meta character
+        let match = clean.match(/^[a-zA-Z0-9_-]+/);
+        return match ? match[0] : permPath;
+    }
+    return permPath.split('/')[0] || permPath;
+}
+
+function getConfigPathGroupName(pathName) {
+    const name = String(pathName || '');
+    const separatorIndex = name.indexOf('/');
+    return separatorIndex === -1 ? '' : name.slice(0, separatorIndex);
+}
+
+function renderConfigPathGroups(paths) {
+  const container = document.getElementById('config-path-groups');
+    if (!container) return;
+
+    const groups = new Map();
+    groups.set('Tanpa grup', 0);
+
+    cachedInternalUsers.forEach(user => {
+        (user.permissions || []).forEach(perm => {
+            if (perm.path) {
+                const groupName = getCanonicalGroupName(perm.path);
+                groups.set(groupName, 0);
+            }
+        });
+    });
+
+    paths.forEach(path => {
+        let matched = false;
+
+        for (const user of cachedInternalUsers) {
+            for (const perm of (user.permissions || [])) {
+                if (!perm.path) continue;
+
+                let isMatch = false;
+                if (perm.path.startsWith('~')) {
+                    try {
+                        const regex = new RegExp(perm.path.slice(1));
+                        isMatch = regex.test(path.name);
+                    } catch (e) { console.error('Invalid regex', perm.path, e); }
+                } else {
+                    isMatch = path.name.startsWith(perm.path);
+                }
+
+                if (isMatch) {
+                    const groupName = getCanonicalGroupName(perm.path);
+                    groups.set(groupName, (groups.get(groupName) || 0) + 1);
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) break;
+        }
+
+        if (!matched) {
+            groups.set('Tanpa grup', (groups.get('Tanpa grup') || 0) + 1);
+        }
+    });
+
+    container.innerHTML = [...groups.entries()]
+      .sort(([first], [second]) => first.localeCompare(second))
+      .map(([groupName, count]) => {
+          const label = formatGroupLabel(groupName);
+          return `
+              <a
+                  href="#config-paths/${encodeURIComponent(groupName)}"
+                  class="nav-link config-path-group-link"
+                  data-page="config-paths"
+                  data-config-path-group="${escapeHtml(groupName)}"
+                  title="${escapeHtml(groupName)} (${count} paths)"
+              >
+                  <span class="nav-label">${escapeHtml(label)}</span>
+              </a>
+          `;
+      })
+      .join('');
+
+    const selectedGroup = getConfigPathGroupFromHash();
+    container.querySelectorAll('[data-config-path-group]').forEach(link => {
+        link.classList.toggle(
+            'nav-active',
+            getPageFromHash() === 'config-paths' && link.dataset.configPathGroup === selectedGroup,
+        );
+    });
+}
+
+function getFilteredConfigPaths(paths) {
+    const selectedGroup = getConfigPathGroupFromHash();
+    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
+    return paths.filter(path =>
+        (selectedGroup === null || getConfigPathGroupName(path.name) === selectedGroup)
+        && [path.name, path.source, path.fallback, path.source_redirect]
             .some(value => String(value || '').toLowerCase().includes(searchTerm))
     );
+}
+
+function renderConfigPaths(paths) {
+    const tbody = document.getElementById('config-paths-table-body');
+    const selectedGroup = getConfigPathGroupFromHash();
+    const groupTitle = document.getElementById('config-paths-group-title');
+    const groupDescription = document.getElementById('config-paths-group-description');
+    const filtered = getFilteredConfigPaths(paths);
+
+    groupTitle.textContent = selectedGroup === null ? 'All paths' : selectedGroup || 'Tanpa grup';
+    groupDescription.textContent = selectedGroup === null
+        ? `${filtered.length} path(s) across all application groups.`
+        : `${filtered.length} path(s) in this application group.`;
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / CONFIG_PATHS_PER_PAGE));
     configPathsCurrentPage = Math.min(configPathsCurrentPage, totalPages);
@@ -2290,11 +2517,7 @@ function updateConfigPathsPaginationControls(totalFiltered, totalPages) {
 }
 
 function changeConfigPathsPage(delta) {
-    const searchTerm = document.getElementById('config-paths-search')?.value.toLowerCase() || '';
-    const filtered = allConfigPaths.filter(path =>
-        [path.name, path.source, path.fallback, path.source_redirect]
-            .some(value => String(value || '').toLowerCase().includes(searchTerm))
-    );
+    const filtered = getFilteredConfigPaths(allConfigPaths);
     const totalPages = Math.max(1, Math.ceil(filtered.length / CONFIG_PATHS_PER_PAGE));
     const nextPage = Math.max(1, Math.min(totalPages, configPathsCurrentPage + delta));
 
@@ -2305,31 +2528,38 @@ function changeConfigPathsPage(delta) {
 }
 
 function exportConfigPaths() {
-    const exportData = allConfigPaths.map(path => {
-        let type = 'Publisher';
-        let source = '(publisher)';
-        if (path.source_redirect) {
-            type = 'Redirect';
-            source = path.source_redirect;
-        } else if (path.source) {
-            type = 'URL Source';
-            source = path.source;
-        }
+    const exportData = {
+        antmedia: "streams-export",
+        version: 1,
+        app: "",
+        exportedAt: Date.now(),
+        streams: allConfigPaths.map(path => {
+            let streamUrl = "";
+            if (path.source_redirect) {
+                streamUrl = path.source_redirect;
+            } else if (path.source && path.source !== 'publisher') {
+                streamUrl = path.source;
+            }
 
-        return {
-            name: path.name,
-            type,
-            source,
-            fallback: path.fallback || null,
-            on_demand: Boolean(path.source_on_demand),
-            max_readers: path.max_readers ?? null,
-        };
-    });
+            return {
+                streamId: path.name,
+                name: path.name,
+                type: path.source_redirect ? "redirect" : (path.source === 'publisher' ? "liveStream" : "streamSource"),
+                streamUrl: streamUrl,
+                autoStartStopEnabled: Boolean(path.source_on_demand),
+                playListItemList: [],
+                playlistLoopEnabled: true,
+                mp4Enabled: 0,
+                webMEnabled: 0,
+                publicStream: true
+            };
+        })
+    };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const downloadUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = downloadUrl;
-    link.download = `path-configurations-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `mediamtx-export-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -2579,7 +2809,7 @@ const PATH_DEFAULTS_FIELD_DESCRIPTIONS = {
 };
 
 const PATH_DEFAULTS_PLACEHOLDERS = {
-    name: 'e.g. all_others',
+    name: 'e.g. all_Tanpa grup',
     source: 'publisher or rtsp://camera/stream',
     sourceFingerprint: 'SHA-256 certificate fingerprint',
     sourceOnDemandStartTimeout: 'e.g. 10s',
@@ -3351,9 +3581,14 @@ async function confirmCustomPeriodDelete() {
 function startAutoRefresh() {
     stopAutoRefresh();
     refreshInterval = setInterval(() => {
+        cekHealth();
         if (currentPage === 'path-detail') {
             refreshPathRuntime();
-        } else if (currentPage !== 'config-global' && currentPage !== 'config-paths') {
+        } else if (
+            currentPage !== 'config-global'
+            && currentPage !== 'config-paths'
+            && currentPage !== 'config-defaults'
+            && currentPage !== 'internal-users') {
             loadPageData(currentPage);
         }
     }, 5000);
@@ -3380,6 +3615,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const initialPage = getPageFromHash();
     currentRoute = window.location.hash;
+    loadConfigPathGroups();
     navigateToPage(initialPage, getPathNameFromHash());
 
     startAutoRefresh();

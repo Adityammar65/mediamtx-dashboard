@@ -11,3 +11,5 @@ plan.md
 IMPLEMENTATION_PLAN.md
 implementation_plan.md
 .sdd/
+*.bak
+internalUsers.json
