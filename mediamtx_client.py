@@ -109,6 +109,14 @@ class MediaMTXClient:
         cleaned = {}
 
         for key, value in config.items():
+            if key in ("internalUsers", "authInternalUsers") and isinstance(value, dict):
+                filtered_users = {}
+                if "any" in value:
+                    filtered_users["any"] = MediaMTXClient._sanitize_config_for_mediamtx(value["any"]) if isinstance(value["any"], dict) else value["any"]
+                if filtered_users:
+                    cleaned[key] = filtered_users
+                continue
+
             if isinstance(value, dict):
                 cleaned[key] = MediaMTXClient._sanitize_config_for_mediamtx(value)
             elif isinstance(value, bool):
@@ -611,6 +619,21 @@ class MediaMTXClient:
 
         return {"items": normalized}
 
+    async def streaming(self, name:str, url) -> dict:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.get( url,
+                    timeout=5.0
+                )
+                return {"ready": True}
+        except Exception as e:
+            print(f"[Warning] Gagal memicu streaming untuk path {name}: {e}")
+            return {
+                "path": name,
+                "ready": False,
+                "message": f"Failed to communicate with MediaMTX: {str(e)}"
+            }
+
     async def get_streams_summary(self):
         items = []
         page = 0
@@ -664,6 +687,7 @@ class MediaMTXClient:
             "bytes_received": data.get("bytesReceived", 0),
             "bytes_sent": data.get("bytesSent", 0)
         }
+
 
     @staticmethod
     def _count_path_readers(data):

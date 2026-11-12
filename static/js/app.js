@@ -1507,6 +1507,7 @@ async function testPathPreview() {
     document.getElementById('path-detail-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
     const hls = pathDetailState?.outputUrls.find(output => output.label === 'HLS');
     const webRtc = pathDetailState?.outputUrls.find(output => output.label === 'WebRTC');
+
     const video = document.getElementById('path-detail-video');
     const webRtcFrame = document.getElementById('path-detail-webrtc');
     if (pathHlsPlayer) {
@@ -1536,6 +1537,17 @@ async function testPathPreview() {
 
     document.getElementById('path-detail-preview-status').textContent = 'Loading HLS stream...';
     document.getElementById('path-detail-preview-empty').classList.add('hidden');
+
+    if (pathDetailState && pathDetailState.name) {
+        try {
+            const encodedUrl = encodeURIComponent(hls.url);
+            await fetchAPI(`/streaming/${pathDetailState.name}?url=${encodedUrl}`, { method: 'GET' });
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (err) {
+            console.warn('Gagal memicu warm-up stream:', err);
+        }
+    }
+
     video.classList.remove('hidden');
     if (nativeHls) {
         video.src = hls.url;

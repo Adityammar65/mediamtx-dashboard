@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import os
 import asyncio
-import secrets
+from typing import Optional
 from datetime import datetime, timedelta
 import jwt
 import httpx
@@ -338,6 +338,10 @@ async def stream_viewers(name: str, client: MediaMTXClient = Depends(get_mediamt
         data = {"viewer_count": 0, "status": "unavailable"}
     return StandardResponse.success(data, "Stream viewer count")
 
+@app.get("/api/streaming/{name:path}")
+async def streaming(name:str, url: Optional[str] = Query(None), client: MediaMTXClient = Depends(get_mediamtx_client)):
+    data = await client.streaming(name, url)
+    return StandardResponse.success(data, "Hls opened")
 
 @app.get("/api/streams/{name:path}")
 async def stream_detail(name: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
