@@ -94,7 +94,9 @@ class MediaMTXClient:
         """Memuat konfigurasi awal dari file yml ke RAM saat pertama kali inisialisasi."""
         try:
             if self.yaml_path.exists():
-                MediaMTXClient._ram_config = yaml.safe_load(self.yaml_path.read_text()) or {}
+                data = yaml.safe_load(self.yaml_path.read_text()) or {}
+                MediaMTXClient._ram_config = data
+                print(f"[Debug] Loaded config from YAML: {list(data.keys())}")
             MediaMTXClient._cache_loaded = True
         except Exception as e:
             print(f"[Warning] Gagal memuat cache mediamtx.yml: {e}")
@@ -254,7 +256,11 @@ class MediaMTXClient:
 
             if isinstance(paths_data, dict) and paths_data:
                 for path_name, path_config in paths_data.items():
-                    if not path_config or not isinstance(path_config, dict):
+
+                    if path_config is None:
+                        path_config = {}
+
+                    if not isinstance(path_config, dict):
                         continue
 
                     try:
@@ -301,8 +307,7 @@ class MediaMTXClient:
     async def get_server_config(self):
         r = await self.client.get(f"{self.base_url}/config/global/get")
         r.raise_for_status()
-        j= r.json()
-        print(j, flush=True)
+        j = r.json()
         return j
 
     async def list_internal_users(self):
