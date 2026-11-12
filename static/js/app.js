@@ -2313,6 +2313,9 @@ async function loadConfigPathGroups() {
 
           cachedInternalUsers = usersRes.success ? (usersRes.data || []) : [];
           renderConfigPathGroups(pathsRes.data.items || []);
+          if (getPageFromHash() === 'config-paths') {
+              renderConfigPaths(allConfigPaths);
+          }
     } catch (e) {
         showError(e.message);
     }
@@ -2336,13 +2339,30 @@ function getCanonicalGroupName(permPath) {
 }
 
 function getConfigPathGroupName(pathName) {
-    const name = String(pathName || '');
-    const separatorIndex = name.indexOf('/');
-    return separatorIndex === -1 ? '' : name.slice(0, separatorIndex);
+    for (const user of cachedInternalUsers) {
+        for (const perm of (user.permissions || [])) {
+            if (typeof perm.path !== 'string' || !perm.path) continue;
+
+            let isMatch = false;
+            if (perm.path.startsWith('~')) {
+                try {
+                    isMatch = new RegExp(perm.path.slice(1)).test(pathName);
+                } catch (error) {
+                    console.error('Invalid regex', perm.path, error);
+                }
+            } else {
+                isMatch = pathName.startsWith(perm.path);
+            }
+
+            if (isMatch) return getCanonicalGroupName(perm.path);
+        }
+    }
+
+    return 'Tanpa grup';
 }
 
 function renderConfigPathGroups(paths) {
-  const container = document.getElementById('config-path-groups');
+    const container = document.getElementById('config-path-groups');
     if (!container) return;
 
     const groups = new Map();
@@ -2358,54 +2378,27 @@ function renderConfigPathGroups(paths) {
     });
 
     paths.forEach(path => {
-        let matched = false;
-
-        for (const user of cachedInternalUsers) {
-            for (const perm of (user.permissions || [])) {
-                if (!perm.path) continue;
-
-                let isMatch = false;
-                if (perm.path.startsWith('~')) {
-                    try {
-                        const regex = new RegExp(perm.path.slice(1));
-                        isMatch = regex.test(path.name);
-                    } catch (e) { console.error('Invalid regex', perm.path, e); }
-                } else {
-                    isMatch = path.name.startsWith(perm.path);
-                }
-
-                if (isMatch) {
-                    const groupName = getCanonicalGroupName(perm.path);
-                    groups.set(groupName, (groups.get(groupName) || 0) + 1);
-                    matched = true;
-                    break;
-                }
-            }
-            if (matched) break;
-        }
-
-        if (!matched) {
-            groups.set('Tanpa grup', (groups.get('Tanpa grup') || 0) + 1);
-        }
+        const groupName = getConfigPathGroupName(path.name);
+        groups.set(groupName, (groups.get(groupName) || 0) + 1);
     });
 
     container.innerHTML = [...groups.entries()]
-      .sort(([first], [second]) => first.localeCompare(second))
-      .map(([groupName, count]) => {
-          const label = formatGroupLabel(groupName);
-          return `
-              <a
-                  href="#config-paths/${encodeURIComponent(groupName)}"
-                  class="nav-link config-path-group-link"
-                  data-page="config-paths"
-                  data-config-path-group="${escapeHtml(groupName)}"
-                  title="${escapeHtml(groupName)} (${count} paths)"
-              >
-                  <span class="nav-label">${escapeHtml(label)}</span>
-              </a>
-          `;
-      })
-      .join('');
+        .sort(([first], [second]) => first.localeCompare(second))
+        .map(([groupName, count]) => {
+            const label = formatGroupLabel(groupName);
+            return `
+                <a
+                    href="#config-paths/${encodeURIComponent(groupName)}"
+                    class="nav-link config-path-group-link"
+                    data-page="config-paths"
+                    data-config-path-group="${escapeHtml(groupName)}"
+                    title="${escapeHtml(groupName)} (${count} paths)"
+                >
+                    <span class="nav-label">${escapeHtml(label)}</span>
+                </a>
+            `;
+        })
+        .join('');
 
     const selectedGroup = getConfigPathGroupFromHash();
     container.querySelectorAll('[data-config-path-group]').forEach(link => {
