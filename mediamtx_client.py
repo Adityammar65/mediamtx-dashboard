@@ -566,6 +566,12 @@ class MediaMTXClient:
             data["fallback"] = kwargs["fallback"]
         if kwargs.get("source_redirect"):
             data["sourceRedirect"] = kwargs["source_redirect"]
+        if kwargs.get("run_on_available") is not None:
+            data["runOnAvailable"] = kwargs["run_on_available"]
+        if kwargs.get("run_on_available_restart") is not None:
+            data["runOnAvailableRestart"] = kwargs["run_on_available_restart"]
+        if kwargs.get("forward") is not None:
+            data["forward"] = kwargs["forward"]
         await self._queue_save_to_yaml(data, path_name=name)
         r = await self.client.post(f"{self.base_url}/config/paths/add/{quote(name, safe='')}", json=data)
         r.raise_for_status()
@@ -592,6 +598,9 @@ class MediaMTXClient:
             "max_readers": "maxReaders",
             "fallback": "fallback",
             "source_redirect": "sourceRedirect",
+            "run_on_available": "runOnAvailable",
+            "run_on_available_restart": "runOnAvailableRestart",
+            "forward": "forward",
         }
         for key, value in payload.items():
             if key in field_map and value is not None:
