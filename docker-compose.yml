@@ -21,29 +21,30 @@ services:
     restart: unless-stopped
 
   mediamtx:
-      image: bluenviron/mediamtx:latest
-      container_name: mediamtx
-      ports:
-        - "8554:8554"   # RTSP
-        - "1935:1935"   # RTMP
-        - "8888:8888"   # HLS
-        - "8889:8889"   # WebRTC / WHEP
-        - "9997:9997"   # API
-        - "8890:8890"   # SRT
-        - "8189:8189/udp"
-      volumes:
-        - ./mediamtx.yml:/mediamtx.yml
-        - ./logs:/var/log/mediamtx
-        - /etc/localtime:/etc/localtime:ro
-      restart: unless-stopped
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    command: ["/config/mediamtx.yml.bak"]
+    ports:
+      - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
+      - "8888:8888" # HLS
+      - "8889:8889" # WebRTC / WHEP
+      - "9997:9997" # API
+      - "8890:8890" # SRT
+      - "8189:8189/udp"
+    volumes:
+      - .:/config
+      - ./logs:/var/log/mediamtx
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
 
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: node_exporter
     command:
-      - '--path.rootfs=/host'
-      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)'
+      - "--path.rootfs=/host"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)"
     pid: host
     volumes:
-      - '/:/host:ro'
+      - "/:/host:ro"
     restart: unless-stopped

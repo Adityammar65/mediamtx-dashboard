@@ -54,18 +54,19 @@ class MediaMTXClient:
     _cache_lock = asyncio.Lock()
     _ram_config = {}
     _cache_loaded = False
-    _yaml_path = Path("mediamtx.yml")
+    _yaml_path = Path(settings.MEDIAMTX_CONFIG_PATH)
     _internalUsers = Path("internalUsers.json")
     _ram_internal_users = {}
     _info = {"connected": False, "restarted": False, "version": "unknown", "started": None}
     _health_started = None
     _last_restore_started = None
+    _has_reconciled_internal_users = False
     _restoring_after_restart = False
     _is_dirty = False
-    _last_modified = 0.0
-    _debounce_seconds = 30.0
     _is_internal_users_dirty = False
-    _last_internal_users_modified = 0.0
+    _yaml_save_task = None
+    _json_save_task = None
+    _save_debounce_seconds = 5
 
     @classmethod
     def get_instance(cls):
@@ -93,10 +94,26 @@ class MediaMTXClient:
         except (OSError, json.JSONDecodeError) as exc:
             print(f"[Warning] Gagal memuat internalUsers.json: {exc}")
 
-    async def capture_internal_users(self):
-        if MediaMTXClient._ram_internal_users:
-            return
-        await self.seed_internal_users_if_empty()
+    async def merge_server_internal_users(self):
+        items = (await self.list_internal_users()).get("items", []) or []
+        users = dict(MediaMTXClient._ram_internal_users)
+        for item in items:
+            username = item.get("user") or ""
+            if not username:
+                continue
+            saved = users.get(username, {})
+            remote_pass = item.get("pass")
+            merged = {**item, **saved}
+            if "pass" in saved:
+                merged["pass"] = saved["pass"]
+            elif remote_pass in (None, "", "<redacted>"):
+                merged.pop("pass", None)
+            else:
+                merged["pass"] = remote_pass
+            merged["ips"] = saved.get("ips", item.get("ips") or [])
+            merged["permissions"] = saved.get("permissions", item.get("permissions") or [])
+            users[username] = merged
+        await self._queue_save_to_json({"users": users})
 
     def _load_initial_cache(self):
         """Memuat konfigurasi awal dari file yml ke RAM saat pertama kali inisialisasi."""
@@ -135,111 +152,106 @@ class MediaMTXClient:
                 cleaned[key] = value
         return cleaned
 
-    async def _queue_save_to_yaml(self, new_config: dict, path_name: Optional[str] = None):
-        """Mencatat perubahan ke RAM terlebih dahulu dan menandai dirty (debounce pattern)."""
+    async def _queue_save_to_yaml(self, new_config: dict, path_name: Optional[str] = None, *, delete_path: Optional[str] = None):
+        """Update the in-memory snapshot and debounce its durable YAML write."""
         async with self._cache_lock:
             if path_name:
-                if "paths" not in MediaMTXClient._ram_config or not isinstance(MediaMTXClient._ram_config["paths"], dict):
-                    MediaMTXClient._ram_config["paths"] = {}
-                if path_name not in MediaMTXClient._ram_config["paths"] or not isinstance(MediaMTXClient._ram_config["paths"][path_name], dict):
-                    MediaMTXClient._ram_config["paths"][path_name] = {}
-                MediaMTXClient._ram_config["paths"][path_name].update(new_config)
+                paths = MediaMTXClient._ram_config.setdefault("paths", {})
+                if not isinstance(paths, dict):
+                    raise ValueError("Cached paths configuration must be a mapping")
+                paths.setdefault(path_name, {}).update(new_config)
             else:
                 MediaMTXClient._ram_config.update(new_config)
-
+            if delete_path is not None:
+                paths = MediaMTXClient._ram_config.get("paths", {})
+                if isinstance(paths, dict):
+                    paths.pop(delete_path, None)
             MediaMTXClient._is_dirty = True
-            MediaMTXClient._last_modified = time.time()
+            task = MediaMTXClient._yaml_save_task
+            if task and not task.done():
+                task.cancel()
+            MediaMTXClient._yaml_save_task = asyncio.create_task(self._delayed_yaml_save())
 
+    async def _delayed_yaml_save(self):
+        try:
+            await asyncio.sleep(MediaMTXClient._save_debounce_seconds)
+            async with MediaMTXClient._cache_lock:
+                self._write_yaml_snapshot()
+                MediaMTXClient._is_dirty = False
+        except asyncio.CancelledError:
+            raise
+        except OSError as exc:
+            print(f"[Error] Failed to persist {self.yaml_path}: {exc}")
 
-        asyncio.create_task(self._debounce_flush())
+    @staticmethod
+    def _write_yaml_snapshot():
+        path = MediaMTXClient._yaml_path
+        temp_path = path.with_name(path.name + ".tmp")
+        backup_path = path.with_name(path.name + ".bak")
+        if path.exists():
+            backup_temp = backup_path.with_name(backup_path.name + ".tmp")
+            backup_temp.write_bytes(path.read_bytes())
+            backup_temp.replace(backup_path)
+        temp_path.write_text(yaml.dump(
+            MediaMTXClient._sanitize_config_for_mediamtx(MediaMTXClient._ram_config),
+            sort_keys=False,
+            allow_unicode=True,
+        ))
+        temp_path.replace(path)
 
     async def _queue_save_to_json(self, data: dict):
         async with self._cache_lock:
             MediaMTXClient._ram_internal_users = data.get("users", {})
             MediaMTXClient._is_internal_users_dirty = True
-            MediaMTXClient._last_internal_users_modified = time.time()
-        asyncio.create_task(self._debounce_internal_users_flush())
+            task = MediaMTXClient._json_save_task
+            if task and not task.done():
+                task.cancel()
+            MediaMTXClient._json_save_task = asyncio.create_task(self._delayed_json_save())
 
-    async def _debounce_internal_users_flush(self):
-        while True:
-            remaining = self._debounce_seconds - (time.time() - MediaMTXClient._last_internal_users_modified)
-            if remaining > 0:
-                await asyncio.sleep(remaining)
-                continue
-            async with self._cache_lock:
-                if not MediaMTXClient._is_internal_users_dirty:
-                    return
-                if time.time() - MediaMTXClient._last_internal_users_modified < self._debounce_seconds:
-                    continue
-                payload = {"version": 1, "users": MediaMTXClient._ram_internal_users}
-                path = MediaMTXClient._internalUsers
-                temp_path = path.with_name(path.name + ".tmp")
-                try:
-                    temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-                    temp_path.replace(path)
-                    MediaMTXClient._is_internal_users_dirty = False
-                except OSError as exc:
-                    print(f"[Warning] Gagal flush internalUsers.json: {exc}")
-                return
+    async def _delayed_json_save(self):
+        try:
+            await asyncio.sleep(MediaMTXClient._save_debounce_seconds)
+            async with MediaMTXClient._cache_lock:
+                self._write_internal_users_snapshot()
+                MediaMTXClient._is_internal_users_dirty = False
+        except asyncio.CancelledError:
+            raise
+        except OSError as exc:
+            print(f"[Error] Failed to persist {MediaMTXClient._internalUsers}: {exc}")
+
+    @staticmethod
+    def _write_internal_users_snapshot():
+        path = MediaMTXClient._internalUsers
+        temp_path = path.with_name(path.name + ".tmp")
+        temp_path.write_text(json.dumps(
+            {"version": 1, "users": MediaMTXClient._ram_internal_users},
+            indent=2,
+            ensure_ascii=False,
+        ))
+        temp_path.replace(path)
 
     @classmethod
     def force_flush_internal_users_sync(cls):
-        if not cls._is_internal_users_dirty:
-            return
-        payload = {"version": 1, "users": cls._ram_internal_users}
-        path = cls._internalUsers
-        temp_path = path.with_name(path.name + ".tmp")
-        try:
-            temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-            temp_path.replace(path)
-            cls._is_internal_users_dirty = False
-        except OSError as exc:
-            print(f"[Warning] Gagal final sync internalUsers.json: {exc}")
-
-    async def seed_internal_users_if_empty(self):
-        if MediaMTXClient._ram_internal_users:
-            return
-        items = (await self.list_internal_users()).get("items", []) or []
-        users = {}
-        for item in items:
-            username = item.get("user") or ""
-            if not username:
-                continue
-            users[username] = {
-                "pass": item.get("pass", ""),
-                "ips": item.get("ips", []),
-                "permissions": item.get("permissions", []),
-            }
-        if users:
-            await self._queue_save_to_json({"users": users})
-            self.force_flush_internal_users_sync()
-        else:
-            MediaMTXClient._ram_internal_users = {}
-
-    async def _debounce_flush(self):
-        """Menunggu hingga aktivitas konfigurasi mereda sebelum menulis ke disk."""
-        await asyncio.sleep(self._debounce_seconds)
-        async with self._cache_lock:
-            if MediaMTXClient._is_dirty and (time.time() - MediaMTXClient._last_modified >= self._debounce_seconds):
-                try:
-                    safe_config = MediaMTXClient._sanitize_config_for_mediamtx(MediaMTXClient._ram_config)
-
-                    self.yaml_path.write_text(yaml.dump(safe_config, sort_keys=False, allow_unicode=True))
-                    MediaMTXClient._is_dirty = False
-                    print("[Info] Konfigurasi berhasil disinkronkan ke mediamtx.yml (Debounced).")
-                except Exception as e:
-                    print(f"[Warning] Gagal flush ke mediamtx.yml: {e}")
+        if cls._json_save_task and not cls._json_save_task.done():
+            cls._json_save_task.cancel()
+        if cls._is_internal_users_dirty:
+            try:
+                cls._write_internal_users_snapshot()
+                cls._is_internal_users_dirty = False
+            except OSError as exc:
+                print(f"[Error] Failed final persist of {cls._internalUsers}: {exc}")
 
     @classmethod
     def force_flush_sync(cls):
-        """Dipanggil saat shutdown aplikasi untuk memastikan tidak ada data RAM yang tertinggal."""
-        if cls._is_dirty and cls._yaml_path.exists():
+        """Retry pending YAML snapshot persistence during graceful shutdown."""
+        if cls._yaml_save_task and not cls._yaml_save_task.done():
+            cls._yaml_save_task.cancel()
+        if cls._is_dirty:
             try:
-                cls._yaml_path.write_text(yaml.dump(cls._ram_config, sort_keys=False, allow_unicode=True))
+                cls._write_yaml_snapshot()
                 cls._is_dirty = False
-                print("[Info] Final sync: mediamtx.yml berhasil diperbarui.")
-            except Exception as e:
-                print(f"[Error] Gagal final sync ke mediamtx.yml: {e}")
+            except OSError as exc:
+                print(f"[Error] Failed final persist of {cls._yaml_path}: {exc}")
 
     # --- Server ---
 
@@ -288,10 +300,18 @@ class MediaMTXClient:
                     "started": started,
                 })
 
-                age = self._parse_started_to_seconds(started)
-                if started and age < 10 and started != MediaMTXClient._last_restore_started:
-                    MediaMTXClient._last_restore_started = started
-                    await self._restore_after_restart()
+                if started and (
+                    not MediaMTXClient._has_reconciled_internal_users
+                    or started != MediaMTXClient._last_restore_started
+                ):
+                    try:
+                        await self.merge_server_internal_users()
+                        await self._restore_after_restart()
+                    except Exception as exc:
+                        print(f"[Error] MediaMTX reconciliation failed; retrying next poll: {exc}", flush=True)
+                    else:
+                        MediaMTXClient._last_restore_started = started
+                        MediaMTXClient._has_reconciled_internal_users = True
 
             except Exception as exc:
                 MediaMTXClient._info.clear()
@@ -312,40 +332,41 @@ class MediaMTXClient:
             cached = dict(MediaMTXClient._ram_config)
             paths_data = cached.pop("paths", {})
             cached.pop("authInternalUsers", None)
-            cached.pop("pathDefaults", None)
+            path_defaults = cached.pop("pathDefaults", None)
             if cached:
                 await self.patch_server_config(cached, persist=False)
 
-            if isinstance(paths_data, dict) and paths_data:
+            if isinstance(paths_data, dict):
                 for path_name, path_config in paths_data.items():
-
                     if path_config is None:
                         path_config = {}
-
                     if not isinstance(path_config, dict):
-                        continue
+                        raise ValueError(f"Invalid cached path config for {path_name!r}")
 
-                    try:
-                        encoded_name = quote(path_name, safe="")
-                        check_res = await self.client.get(f"{self.base_url}/config/paths/get/{encoded_name}")
+                    encoded_name = quote(path_name, safe="")
+                    check_res = await self.client.get(f"{self.base_url}/config/paths/get/{encoded_name}")
+                    if check_res.status_code == 200:
+                        res = await self.client.patch(
+                            f"{self.base_url}/config/paths/patch/{encoded_name}",
+                            json=path_config,
+                        )
+                    elif check_res.status_code == 404:
+                        res = await self.client.post(
+                            f"{self.base_url}/config/paths/add/{encoded_name}",
+                            json=path_config,
+                        )
+                    else:
+                        check_res.raise_for_status()
+                        raise httpx.HTTPStatusError(
+                            "Unexpected path lookup response", request=check_res.request, response=check_res
+                        )
+                    res.raise_for_status()
 
-                        if check_res.status_code == 200:
-                            res = await self.client.patch(
-                                f"{self.base_url}/config/paths/patch/{encoded_name}",
-                                json=path_config
-                            )
-                        else:
-                            res = await self.client.post(
-                                f"{self.base_url}/config/paths/add/{encoded_name}",
-                                json=path_config
-                            )
-                        if res.status_code in (200, 201, 204):
-                            print(f"[Info] Path '{path_name}' sukses disimpan ke MediaMTX.", flush=True)
-                        else:
-                            print(f"[Warning] Gagal menyimpan path '{path_name}', status: {res.status_code}, respon: {res.text}", flush=True)
-
-                    except Exception as path_err:
-                        print(f"[Error] Terjadi kesalahan saat memulihkan path '{path_name}': {path_err}", flush=True)
+            if isinstance(path_defaults, dict):
+                response = await self.client.patch(
+                    f"{self.base_url}/config/path-defaults/patch", json=path_defaults
+                )
+                response.raise_for_status()
 
             for username, saved in MediaMTXClient._ram_internal_users.items():
                 permissions = saved.get("permissions", [])
@@ -358,12 +379,14 @@ class MediaMTXClient:
                     "permissions": permissions,
                 }
                 if match and match.get("id"):
-                    await self.client.patch(f"{self.base_url}/config/internal-users/patch/{match['id']}", json=payload)
+                    response = await self.client.patch(f"{self.base_url}/config/internal-users/patch/{match['id']}", json=payload)
                 else:
-                    await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+                    response = await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
+                response.raise_for_status()
 
-        except httpx.HTTPError as exc:
-            print(f"[Warning] Gagal restore konfigurasi setelah restart MediaMTX: {exc}")
+        except Exception as exc:
+            print(f"[Error] MediaMTX reconciliation failed; will retry: {exc}", flush=True)
+            raise
         finally:
             MediaMTXClient._restoring_after_restart = False
 
@@ -381,6 +404,8 @@ class MediaMTXClient:
     async def create_internal_user(self, user: str, password: str, permissions: list[dict], ips: list[str] | None = None):
         ips = ips or []
         payload = {"user": user, "pass": password, "ips": ips, "permissions": permissions}
+        MediaMTXClient._ram_internal_users[user] = {"pass": password, "ips": ips, "permissions": permissions}
+        await self._queue_save_to_json({"users": MediaMTXClient._ram_internal_users})
         existing = (await self.list_internal_users()).get("items", [])
         match = next((item for item in existing if item.get("user") == user), None)
         if match and match.get("id"):
@@ -391,36 +416,66 @@ class MediaMTXClient:
         else:
             r = await self.client.post(f"{self.base_url}/config/internal-users/add", json=payload)
         r.raise_for_status()
-        MediaMTXClient._ram_internal_users[user] = {"pass": password, "ips": ips, "permissions": permissions}
-        await self._queue_save_to_json({"users": MediaMTXClient._ram_internal_users})
         return r.json()
 
-    async def update_internal_user(self, user_id: str, user: str, password: str | None, permissions: list[dict], ips: list[str] | None = None):
+    async def _resolve_user_id(self, username: str) -> str | None:
+        """Refresh server list and return the current ID for a stable username."""
+        items = (await self.list_internal_users()).get("items", [])
+        match = next((item for item in items if item.get("user") == username), None)
+        return match.get("id") if match else None
+
+    async def update_internal_user(self, username: str, user: str, password: str | None, permissions: list[dict], ips: list[str] | None = None):
+        current_id = await self._resolve_user_id(username)
+        if not current_id:
+            raise HTTPException(404, f"Internal user {username!r} not found; user list refreshed")
         existing = (await self.list_internal_users()).get("items", [])
-        previous = next((item for item in existing if item.get("id") == user_id), None)
+        previous = next((item for item in existing if item.get("id") == current_id), None)
         previous_user = previous.get("user") if previous else None
-        saved_user = MediaMTXClient._ram_internal_users.get(previous_user or user, {})
+        saved_user = MediaMTXClient._ram_internal_users.get(previous_user or username, {})
         ips = ips if ips is not None else (previous.get("ips") if previous else saved_user.get("ips", []))
         payload = {"user": user, "ips": ips, "permissions": permissions}
         if password:
             payload["pass"] = password
-        r = await self.client.patch(f"{self.base_url}/config/internal-users/patch/{user_id}", json=payload)
-        r.raise_for_status()
+
         saved_password = password or saved_user.get("pass", "")
         if previous_user and previous_user != user:
             MediaMTXClient._ram_internal_users.pop(previous_user, None)
         MediaMTXClient._ram_internal_users[user] = {"pass": saved_password, "ips": ips, "permissions": permissions}
         await self._queue_save_to_json({"users": MediaMTXClient._ram_internal_users})
+
+        for attempt in range(2):
+            r = await self.client.patch(f"{self.base_url}/config/internal-users/patch/{current_id}", json=payload)
+            if r.status_code == 404 and attempt == 0:
+                current_id = await self._resolve_user_id(username)
+                if not current_id:
+                    raise HTTPException(404, f"Internal user {username!r} no longer exists; user list refreshed")
+                continue
+            if r.status_code == 404:
+                raise HTTPException(404, f"Internal user {username!r} changed during update; user list refreshed")
+            r.raise_for_status()
+            break
         return r.json()
 
-    async def delete_internal_user(self, user_id: str):
-        existing = (await self.list_internal_users()).get("items", [])
-        previous = next((item for item in existing if item.get("id") == user_id), None)
-        r = await self.client.delete(f"{self.base_url}/config/internal-users/delete/{user_id}")
-        r.raise_for_status()
-        if previous:
-            MediaMTXClient._ram_internal_users.pop(previous.get("user"), None)
+    async def delete_internal_user(self, username: str):
+        MediaMTXClient._ram_internal_users.pop(username, None)
         await self._queue_save_to_json({"users": MediaMTXClient._ram_internal_users})
+        current_id = await self._resolve_user_id(username)
+        if not current_id:
+            raise HTTPException(404, f"Internal user {username!r} not found; user list refreshed")
+        existing = (await self.list_internal_users()).get("items", [])
+        previous = next((item for item in existing if item.get("id") == current_id), None)
+
+        for attempt in range(2):
+            r = await self.client.delete(f"{self.base_url}/config/internal-users/delete/{current_id}")
+            if r.status_code == 404 and attempt == 0:
+                current_id = await self._resolve_user_id(username)
+                if not current_id:
+                    raise HTTPException(404, f"Internal user {username!r} no longer exists; user list refreshed")
+                continue
+            if r.status_code == 404:
+                raise HTTPException(404, f"Internal user {username!r} changed during delete; user list refreshed")
+            r.raise_for_status()
+            break
 
     async def patch_server_config(self, payload, persist=True):
         try:
@@ -446,6 +501,9 @@ class MediaMTXClient:
 
             cleaned_payload.pop("status", None)
 
+            if persist:
+                await self._queue_save_to_yaml(cleaned_payload)
+
             r = await self.client.patch(
                 f"{self.base_url}/config/global/patch", json=cleaned_payload
             )
@@ -457,8 +515,6 @@ class MediaMTXClient:
                 )
 
             r.raise_for_status()
-            if persist:
-                await self._queue_save_to_yaml(cleaned_payload)
             return r.json()
         except httpx.HTTPStatusError as exc:
             print(f"HTTP Error from MediaMTX: {exc.response.text}")
@@ -510,9 +566,9 @@ class MediaMTXClient:
             data["fallback"] = kwargs["fallback"]
         if kwargs.get("source_redirect"):
             data["sourceRedirect"] = kwargs["source_redirect"]
-        r = await self.client.post(f"{self.base_url}/config/paths/add/{name}", json=data)
-        r.raise_for_status()
         await self._queue_save_to_yaml(data, path_name=name)
+        r = await self.client.post(f"{self.base_url}/config/paths/add/{quote(name, safe='')}", json=data)
+        r.raise_for_status()
         return r.json()
 
     async def get_path(self, name):
@@ -540,6 +596,7 @@ class MediaMTXClient:
         for key, value in payload.items():
             if key in field_map and value is not None:
                 mapped[field_map[key]] = value
+        await self._queue_save_to_yaml(mapped, path_name=name)
         r = await self.client.patch(
             f"{self.base_url}/config/paths/patch/{quote(name, safe='')}",
             json=mapped,
@@ -547,21 +604,14 @@ class MediaMTXClient:
         if r.status_code == 404:
             raise HTTPException(404, "Path not found")
         r.raise_for_status()
-        await self._queue_save_to_yaml(mapped, path_name=name)
         return r.json()
 
     async def delete_path(self, name):
+        await self._queue_save_to_yaml({}, delete_path=name)
         r = await self.client.delete(f"{self.base_url}/config/paths/delete/{quote(name, safe='')}")
         if r.status_code == 404:
             raise HTTPException(404, "Path not found")
         r.raise_for_status()
-        async with self._cache_lock:
-            paths = MediaMTXClient._ram_config.get("paths", {})
-            if isinstance(paths, dict):
-                paths.pop(name, None)
-            MediaMTXClient._is_dirty = True
-            MediaMTXClient._last_modified = time.time()
-        asyncio.create_task(self._debounce_flush())
 
     # --- Streams ---
 
@@ -869,6 +919,7 @@ class MediaMTXClient:
         return r.json()
 
     async def patch_path_defaults(self, payload):
+        await self._queue_save_to_yaml({"pathDefaults": payload})
         r = await self.client.patch(
             f"{self.base_url}/config/path-defaults/patch", json=payload
         )

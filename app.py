@@ -242,8 +242,8 @@ async def create_internal_user(payload: dict = Body(...), client: MediaMTXClient
     return StandardResponse.success(data, "Internal user created")
 
 
-@app.patch("/api/internal-users/{user_id}")
-async def update_internal_user(user_id: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
+@app.patch("/api/internal-users/{username:path}")
+async def update_internal_user(username: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
     raw_user = payload.get("user")
     if not isinstance(raw_user, str) or not raw_user.strip():
         raise HTTPException(400, "user must be a non-blank string")
@@ -258,13 +258,13 @@ async def update_internal_user(user_id: str, payload: dict = Body(...), client: 
     ips = payload.get("ips")
     if ips is not None and (not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips)):
         raise HTTPException(400, "ips must be a list of strings")
-    data = await client.update_internal_user(user_id, user, password, permissions, ips)
+    data = await client.update_internal_user(username, user, password, permissions, ips)
     return StandardResponse.success(data, "Internal user updated")
 
 
-@app.delete("/api/internal-users/{user_id}")
-async def delete_internal_user(user_id: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
-    await client.delete_internal_user(user_id)
+@app.delete("/api/internal-users/{username:path}")
+async def delete_internal_user(username: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    await client.delete_internal_user(username)
     return StandardResponse.success(None, "Internal user deleted")
 
 
