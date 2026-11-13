@@ -96,7 +96,7 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
 async def lifespan(app: FastAPI):
     client = get_mediamtx_client()
     try:
-        await client.capture_internal_users()
+        await client.merge_server_internal_users()
     except Exception as exc:
         print(f"[Warning] Failed to capture MediaMTX internal users: {exc}")
     health_task = asyncio.create_task(client._cekMediamtxHealth())

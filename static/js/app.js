@@ -2020,12 +2020,11 @@ function populateConfigGlobalForm(config) {
     const form = document.querySelector('#page-config-global');
     if (!form) return;
 
-
     const simpleFields = [
-        'logLevel', 'logFormat', 'readTimeout', 'writeTimeout', 'readHeaderTimeout',
+        'logLevel', 'logFile', 'readTimeout', 'writeTimeout',
         'rtspAddress', 'rtmpAddress', 'hlsAddress', 'webrtcAddress', 'srtAddress', 'playbackAddress',
-        'rtpAddress', 'rtcpAddress',
-        'webrtcICEHostNAT1To1', 'webrtcICEUDPMulticastAddress', 'webrtcICEPortRange', 'webrtcAdditionalHosts',
+        'rtpAddress', 'rtcpAddress', 'multicastIPRange',
+        'webrtcLocalUDPAddress', 'webrtcLocalTCPAddress', 'webrtcAdditionalHosts',
         'srtLatency', 'srtMaxBandwidth',
         'hlsAllowOrigin', 'hlsSegmentCount', 'hlsSegmentDuration', 'hlsPartDuration'
     ];
@@ -2037,15 +2036,12 @@ function populateConfigGlobalForm(config) {
             if (value !== undefined && value !== null) {
                 if (el.type === 'checkbox') {
                     el.checked = value;
-                } else if (el.multiple) {
-
                 } else {
                     el.value = value;
                 }
             }
         }
     });
-
 
     ['logDestinations', 'rtspTransports'].forEach(name => {
         const checkboxes = form.querySelectorAll(`[name="${name}"][type="checkbox"]`);
@@ -2057,14 +2053,13 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    const apiFields = ['enabled', 'address', 'encryption', 'authentication', 'trustedProxies', 'corsOrigin'];
+    const apiFields = ['api', 'apiAddress', 'apiEncryption', 'apiAllowOrigin', 'apiTrustedProxies'];
     apiFields.forEach(name => {
-        const el = form.querySelector(`[name="api.${name}"]`);
+        const el = form.querySelector(`[name="${name}"]`);
         if (el) {
-            const value = getNestedValue(config, `api.${name}`);
+            const value = getNestedValue(config, name);
             if (value !== undefined && value !== null) {
-                if (el.multiple || name === 'trustedProxies' || name === 'corsOrigin') {
+                if (el.multiple || name === 'apiTrustedProxies' || name === 'apiAllowOrigin') {
                     if (Array.isArray(value)) {
                         el.value = value.join(', ');
                     } else if (typeof value === 'string') {
@@ -2077,8 +2072,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    ['metrics.enabled', 'metrics.address', 'metrics.encryption'].forEach(name => {
+    ['metrics', 'metricsAddress', 'metricsEncryption'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el) {
             const value = getNestedValue(config, name);
@@ -2088,8 +2082,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    ['pprof.enabled', 'pprof.address'].forEach(name => {
+    ['pprof', 'pprofAddress', 'pprofEncryption'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el) {
             const value = getNestedValue(config, name);
@@ -2099,32 +2092,25 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    const webrtcEncEl = form.querySelector('[name="webrtcEncryption"]');
-    if (webrtcEncEl) {
-        const value = getNestedValue(config, 'webrtcEncryption');
-        if (value !== undefined && value !== null) {
-            webrtcEncEl.value = value;
+    ['rtsp', 'rtmp', 'hls', 'webrtc', 'srt', 'playback'].forEach(name => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) {
+            const value = getNestedValue(config, name);
+            if (value !== undefined && value !== null) {
+                el.value = value;
+            }
         }
-    }
+    });
 
-
-    const srtEncEl = form.querySelector('[name="srtEncryption"]');
-    if (srtEncEl) {
-        const value = getNestedValue(config, 'srtEncryption');
-        if (value !== undefined && value !== null) {
-            srtEncEl.value = value;
+    ['rtspEncryption', 'webrtcEncryption', 'webrtcIPsFromInterfaces', 'hlsEncryption', 'hlsVariant'].forEach(name => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) {
+            const value = getNestedValue(config, name);
+            if (value !== undefined && value !== null) {
+                el.value = value;
+            }
         }
-    }
-
-
-    const hlsEncEl = form.querySelector('[name="hlsEncryption"]');
-    if (hlsEncEl) {
-        const value = getNestedValue(config, 'hlsEncryption');
-        if (value !== undefined && value !== null) {
-            hlsEncEl.value = value;
-        }
-    }
+    });
 }
 
 function collectConfigGlobalForm() {
