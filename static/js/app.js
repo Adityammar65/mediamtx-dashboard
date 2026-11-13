@@ -562,13 +562,14 @@ async function initInternalUsers() {
         if (!button) return;
         const row = button.closest('tr');
         const item = users.find(user => String(user.id) === row.dataset.userId);
+        if (!item) return;
         try {
             if (button.dataset.action === 'delete') {
-                await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'DELETE' });
+                await fetchAPI(`/internal-users/${encodeURIComponent(item.user)}`, { method: 'DELETE' });
                 await initInternalUsers();
                 return;
             }
-            document.getElementById('internal-user-edit-id').value = item.id;
+            document.getElementById('internal-user-edit-id').value = item.user;
             document.getElementById('internal-user-name').value = item.user || '';
             document.getElementById('internal-user-password').value = '';
             document.getElementById('internal-user-password').required = false;
@@ -579,7 +580,12 @@ async function initInternalUsers() {
             pathsEl.replaceChildren();
             (item.permissions || []).forEach(addPathRow);
             form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } catch (error) { showError(error.message); }
+        } catch (error) {
+            if (error.status === 404) {
+                await initInternalUsers();
+                status.textContent = 'User was already removed or changed. List refreshed.';
+            } else showError(error.message);
+        }
     };
     let submitting = false;
     form.onsubmit = async event => {
@@ -590,17 +596,23 @@ async function initInternalUsers() {
         const user = document.getElementById('internal-user-name').value.trim();
         const password = document.getElementById('internal-user-password').value;
         const ips = document.getElementById('internal-user-ips').value.split(',').map(ip => ip.trim()).filter(Boolean);
-        const userId = document.getElementById('internal-user-edit-id').value;
+        const editUsername = document.getElementById('internal-user-edit-id').value;
         const submitBtn = form.querySelector('button[type="submit"]');
         submitting = true;
         submitBtn.disabled = true;
         submitBtn.textContent = 'Saving...';
         try {
-            if (userId) await fetchAPI(`/internal-users/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify({ user, password, ips, permissions }) });
+            if (editUsername) await fetchAPI(`/internal-users/${encodeURIComponent(editUsername)}`, { method: 'PATCH', body: JSON.stringify({ user, password, ips, permissions }) });
             else await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user, password, ips, permissions }) });
             status.textContent = 'Saved.';
             await initInternalUsers();
-        } catch (error) { status.textContent = error.message; }
+        } catch (error) {
+            status.textContent = error.message;
+            if (error.status === 404) {
+                await initInternalUsers();
+                status.textContent = 'User no longer exists on MediaMTX. List refreshed.';
+            }
+        }
         finally { submitting = false; submitBtn.disabled = false; submitBtn.textContent = userId ? 'Save changes' : 'Add user'; }
     };
 }
@@ -3340,7 +3352,7 @@ async function saveConfigDefaults() {
         renderConfigDefaults(originalDefaults);
         form.dataset.dirty = 'false';
         setConfigDefaultsStatus(
-            'Path Defaults updated in the MediaMTX runtime. This change is not written to mediamtx.yml and will be lost after a MediaMTX restart.',
+            'Path Defaults updated in the MediaMTX runtime and saved in the dashboard configuration cache for restoration after a MediaMTX restart.',
             'success'
         );
     } catch (e) {

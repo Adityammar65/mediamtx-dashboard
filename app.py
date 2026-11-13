@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import os
 import asyncio
-from typing import Optional
+import secrets
 from datetime import datetime, timedelta
 import jwt
 import httpx
@@ -95,12 +95,17 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = get_mediamtx_client()
+    try:
+        await client.capture_internal_users()
+    except Exception as exc:
+        print(f"[Warning] Failed to capture MediaMTX internal users: {exc}")
     health_task = asyncio.create_task(client._cekMediamtxHealth())
     clean_task = asyncio.create_task(clean_old_logs())
     yield
     health_task.cancel()
     clean_task.cancel()
     MediaMTXClient.force_flush_sync()
+    MediaMTXClient.force_flush_internal_users_sync()
     client = get_mediamtx_client()
     await client.close()
     monitor = get_system_monitor()
@@ -237,8 +242,8 @@ async def create_internal_user(payload: dict = Body(...), client: MediaMTXClient
     return StandardResponse.success(data, "Internal user created")
 
 
-@app.patch("/api/internal-users/{user_id}")
-async def update_internal_user(user_id: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
+@app.patch("/api/internal-users/{username:path}")
+async def update_internal_user(username: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
     raw_user = payload.get("user")
     if not isinstance(raw_user, str) or not raw_user.strip():
         raise HTTPException(400, "user must be a non-blank string")
@@ -246,23 +251,20 @@ async def update_internal_user(user_id: str, payload: dict = Body(...), client: 
     permissions = payload.get("permissions", [])
     if not isinstance(permissions, list) or not permissions:
         raise HTTPException(400, "permissions are required")
-    password = payload.get("password")
-    if password is not None and not isinstance(password, str):
+    raw_password = payload.get("password")
+    if raw_password is not None and not isinstance(raw_password, str):
         raise HTTPException(400, "password must be a string when provided")
-    if password is not None and password != "" and not password.strip():
-        raise HTTPException(400, "password must be a non-blank string")
-    if password == "":
-        password = None
-    ips = payload.get("ips", [])
-    if not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips):
+    password = raw_password.strip() if isinstance(raw_password, str) and raw_password.strip() else None
+    ips = payload.get("ips")
+    if ips is not None and (not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips)):
         raise HTTPException(400, "ips must be a list of strings")
-    data = await client.update_internal_user(user_id, user, payload.get("password") or None, permissions, ips)
+    data = await client.update_internal_user(username, user, password, permissions, ips)
     return StandardResponse.success(data, "Internal user updated")
 
 
-@app.delete("/api/internal-users/{user_id}")
-async def delete_internal_user(user_id: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
-    await client.delete_internal_user(user_id)
+@app.delete("/api/internal-users/{username:path}")
+async def delete_internal_user(username: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    await client.delete_internal_user(username)
     return StandardResponse.success(None, "Internal user deleted")
 
 
@@ -362,10 +364,6 @@ async def stream_viewers(name: str, client: MediaMTXClient = Depends(get_mediamt
         data = {"viewer_count": 0, "status": "unavailable"}
     return StandardResponse.success(data, "Stream viewer count")
 
-@app.get("/api/streaming/{name:path}")
-async def streaming(name:str, url: Optional[str] = Query(None), client: MediaMTXClient = Depends(get_mediamtx_client)):
-    data = await client.streaming(name, url)
-    return StandardResponse.success(data, "Hls opened")
 
 @app.get("/api/streams/{name:path}")
 async def stream_detail(name: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
