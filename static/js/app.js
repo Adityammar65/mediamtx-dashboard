@@ -1050,7 +1050,7 @@ async function cekHealth() {
     try {
         const health = await fetchAPI('/server/health');
         if (currentPage != 'dashboard') {
-            setConnectionStatus(health.success);
+            setConnectionStatus(health.data.connected);
             return;
         }
         if (health.success) {
@@ -1087,10 +1087,8 @@ async function loadStreams() {
             streamsCurrentPage = 1;
             renderStreams(allStreams);
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -1274,14 +1272,28 @@ function getListenerUrl(address, scheme, pathName, suffix = '', publicHost = '')
 function getPathOutputUrls(serverConfig, pathName, publicHost, credentials = {}) {
     if (!serverConfig) return [];
     const outputs = [];
+
+    const username = encodeURIComponent(credentials.username || '');
+    const password = encodeURIComponent(credentials.password || '');
+    const hasAuth = username || password;
+
     const addOutput = (label, url, vlcCompatible = false) => {
-        if (url) {
-            const username = encodeURIComponent(credentials.username || '');
-            const password = encodeURIComponent(credentials.password || '');
-            const auth = username || password ? `${username}:${password}@` : '';
+          if (url) {
+              let finalUrl = url;
+        if (hasAuth) {
+              if (label === 'RTMP') {
+                  const queryParams = [];
+                  if (credentials.username) queryParams.push(`user=${username}`);
+                  if (credentials.password) queryParams.push(`pass=${password}`);
+                  finalUrl = `${url}?${queryParams.join('&')}`;
+              } else {
+                  const auth = `${username}:${password}@`;
+                  finalUrl = url.replace('://', `://${auth}`);
+              }
+        }
             outputs.push({
                 label,
-                url: auth ? url.replace('://', `://${auth}`) : url,
+                url: finalUrl,
                 vlcCompatible,
             });
         }
@@ -1399,11 +1411,9 @@ async function refreshPathRuntime() {
         document.getElementById('path-detail-summary-status').textContent = status.label;
         document.getElementById('path-detail-summary-status').className = `mt-2 text-lg font-semibold ${status.online ? 'text-green-700' : 'text-gray-900'}`;
         document.getElementById('path-detail-runtime-note').textContent = status.note;
-        setConnectionStatus(true);
     } catch (error) {
         if (pathDetailState !== state || currentPage !== 'path-detail') return;
         showError(`path runtime: ${error.message}`);
-        setConnectionStatus(false);
     }
 }
 
@@ -1492,13 +1502,37 @@ function showPathNotice(message, type = 'success') {
 }
 
 async function copyPathText(text, label) {
-    try {
-        await navigator.clipboard.writeText(text);
-        showPathNotice(`${label} copied to clipboard.`);
-    } catch (error) {
-        showPathNotice(`Could not copy ${label.toLowerCase()}: ${error.message}`, 'warning');
-    }
-}
+  try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              showPathNotice(`${label} copied to clipboard.`);
+              return;
+          }
+
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+
+          textArea.style.position = "fixed";
+          textArea.style.top = "0";
+          textArea.style.left = "0";
+          textArea.style.opacity = "0";
+
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+
+          if (successful) {
+              showPathNotice(`${label} copied to clipboard.`);
+          } else {
+              throw new Error('document.execCommand(copy) failed');
+          }
+      } catch (error) {
+          showPathNotice(`Could not copy ${label.toLowerCase()}: ${error.message}`, 'warning');
+      }
+  }
 
 function copyPathSource() {
     const source = getPathSource(pathDetailState.config, pathDetailState.runtime);
@@ -1964,10 +1998,8 @@ async function loadConfigGlobal() {
             document.getElementById('config-global-form-status').classList.add('hidden');
             document.getElementById('config-global-json-status').classList.add('hidden');
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
         document.getElementById('config-global-editor').value = 'Failed to load configuration';
     }
 }
@@ -2140,7 +2172,6 @@ async function saveConfigGlobalForm() {
             statusEl.className = 'mt-4 text-sm text-green-600';
 
             setTimeout(function() {
-                console.log('5. Mengeksekusi reload...');
                 window.location.reload();
             }, 1500);
         } else {
@@ -2170,9 +2201,6 @@ async function saveConfigGlobalJSON() {
             method: 'PATCH',
             body: JSON.stringify(config),
         });
-
-        console.log(res);
-        console.log("jajajaaj");
         if (res.success) {
             originalConfig = res.data;
             populateConfigGlobalForm(res.data);
@@ -2180,10 +2208,7 @@ async function saveConfigGlobalJSON() {
             statusEl.textContent = 'Configuration saved successfully';
             statusEl.className = 'mt-3 text-sm text-green-600';
 
-            console.log('Timer dimulai, reload dalam 1.5 detik...');
-
             setTimeout(function() {
-                console.log('Mengeksekusi location.reload()...');
                 window.location.reload(true);
             }, 1500);
 
@@ -2191,7 +2216,6 @@ async function saveConfigGlobalJSON() {
             throw new Error('Failed to save');
         }
     } catch (e) {
-        console.log(`Error: ${e.message}`);
         statusEl.textContent = `Error: ${e.message}`;
         statusEl.className = 'mt-3 text-sm text-red-600';
     } finally {
@@ -2359,10 +2383,8 @@ async function loadConfigPaths() {
             configPathsCurrentPage = 1;
             renderConfigPaths(allConfigPaths);
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -2672,10 +2694,8 @@ async function loadConfigDefaults() {
             if (form) form.dataset.dirty = 'false';
             setConfigDefaultsStatus('', '');
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
         setConfigDefaultsStatus(`Failed to load Path Defaults: ${e.message}`, 'error');
     }
 }
@@ -3323,7 +3343,6 @@ async function saveConfigDefaults() {
             'Path Defaults updated in the MediaMTX runtime. This change is not written to mediamtx.yml and will be lost after a MediaMTX restart.',
             'success'
         );
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
         setConfigDefaultsStatus(`Unable to update Path Defaults: ${e.message}`, 'error');
@@ -3400,10 +3419,8 @@ async function loadRuntimeHLS() {
         if (connections.success) renderConnections('hls-connections-body', connections.data.items || []);
         if (sessions.success) renderSessions('hls-sessions-body', sessions.data.items || []);
 
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -3417,10 +3434,8 @@ async function loadRuntimeRTSP() {
         if (connections.success) renderConnections('rtsp-connections-body', connections.data.items || []);
         if (sessions.success) renderSessions('rtsp-sessions-body', sessions.data.items || []);
 
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -3434,10 +3449,8 @@ async function loadRuntimeRTMP() {
         if (connections.success) renderConnections('rtmp-connections-body', connections.data.items || []);
         if (sessions.success) renderSessions('rtmp-sessions-body', sessions.data.items || []);
 
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -3455,10 +3468,8 @@ async function loadRuntimeLogs() {
             logsCurrentPage = 1;
             renderLogs(allLogs);
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
         document.getElementById('logs-body').innerHTML = '<tr><td colspan="3" class="px-6 py-12 text-center text-red-600">Failed to load logs</td></tr>';
     }
 }
