@@ -316,6 +316,9 @@ async def create_path(
         max_readers=payload.max_readers,
         fallback=payload.fallback,
         source_redirect=payload.source_redirect,
+        run_on_available=payload.run_on_available,
+        run_on_available_restart=payload.run_on_available_restart,
+        forward=[item.model_dump(exclude_none=True) for item in payload.forward],
     )
     return StandardResponse.success(data, "Path created")
 

@@ -1659,6 +1659,91 @@ async function deleteCurrentPath() {
 
 let editingPathName = null;
 
+const PATH_FORWARD_FIELDS = [
+    ['dest', 'Destination', true],
+    ['destFingerprint', 'Destination fingerprint', false],
+    ['moqTransport', 'MoQ transport', false],
+    ['whipBearerToken', 'WHIP bearer token', false],
+];
+
+function renderPathForwardDestination(item = {}) {
+    const knownFields = new Set(PATH_FORWARD_FIELDS.map(([key]) => key));
+    const extras = Object.fromEntries(Object.entries(item).filter(([key]) => !knownFields.has(key)));
+    const fields = PATH_FORWARD_FIELDS.map(([key, label, required]) => `
+        <label class="block min-w-0">
+            <span class="mb-1 block text-xs font-medium text-gray-600">${label}</span>
+            <input data-forward-field="${key}" type="text" value="${escapeHtml(item[key] ?? '')}" ${required ? 'aria-required="true"' : ''} placeholder="${key === 'dest' ? 'rtmp://host/live#stream-key' : ''}" class="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </label>
+    `).join('');
+
+    return `
+        <div data-forward-item data-forward-extras="${escapeHtml(JSON.stringify(extras))}" class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div class="mb-3 flex items-center justify-between">
+                <span data-forward-item-label class="text-xs font-semibold uppercase tracking-wide text-gray-500">Destination</span>
+                <button type="button" data-forward-remove class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Remove</button>
+            </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">${fields}</div>
+        </div>
+    `;
+}
+
+function renderPathForwardDestinations(forward = []) {
+    const container = document.getElementById('path-forward-items');
+    if (!container) return;
+    container.innerHTML = forward.map(renderPathForwardDestination).join('');
+    updatePathForwardDestinationLabels(container);
+}
+
+function updatePathForwardDestinationLabels(container = document.getElementById('path-forward-items')) {
+    container?.querySelectorAll('[data-forward-item-label]').forEach((label, index) => {
+        label.textContent = `Destination ${index + 1}`;
+    });
+}
+
+function addPathForwardDestination(item = {}) {
+    const container = document.getElementById('path-forward-items');
+    if (!container) return;
+    container.insertAdjacentHTML('beforeend', renderPathForwardDestination(item));
+    updatePathForwardDestinationLabels(container);
+}
+
+function setPathRelayMode(mode, hasConflict = false) {
+    document.querySelectorAll('input[name="path_relay_mode"]').forEach((radio) => {
+        radio.checked = radio.value === mode;
+    });
+    document.getElementById('path-forward-panel')?.classList.toggle('hidden', mode !== 'forward');
+    document.getElementById('path-hooks-panel')?.classList.toggle('hidden', mode !== 'hooks');
+    document.getElementById('path-relay-conflict')?.classList.toggle('hidden', !hasConflict);
+    const forwardItems = document.getElementById('path-forward-items');
+    if (mode === 'forward' && forwardItems && forwardItems.children.length === 0) {
+        addPathForwardDestination();
+    }
+}
+
+function populatePathRelayFields(path) {
+    const runOnAvailable = path.runOnAvailable ?? path.run_on_available ?? '';
+    const restart = path.runOnAvailableRestart ?? path.run_on_available_restart ?? false;
+    const forward = Array.isArray(path.forward) ? path.forward : [];
+    document.getElementById('path-run-on-available').value = runOnAvailable;
+    document.querySelector('input[name="run_on_available_restart"]').checked = restart === true;
+    renderPathForwardDestinations(forward);
+
+    const hasHook = Boolean(runOnAvailable.trim()) || restart === true;
+    const hasForward = forward.some((item) => typeof item?.dest === 'string' && item.dest.trim());
+    if (hasHook && hasForward) {
+        setPathRelayMode('', true);
+    } else {
+        setPathRelayMode(hasForward ? 'forward' : 'hooks');
+    }
+}
+
+function resetPathRelayFields() {
+    document.getElementById('path-run-on-available').value = '';
+    document.querySelector('input[name="run_on_available_restart"]').checked = false;
+    renderPathForwardDestinations([]);
+    setPathRelayMode('hooks');
+}
+
 function openPathModal(path = null) {
     const modal = document.getElementById('add-path-modal');
     const form = document.getElementById('add-path-form');
@@ -1666,6 +1751,7 @@ function openPathModal(path = null) {
     const submitBtn = document.getElementById('path-submit-btn');
 
     form.reset();
+    resetPathRelayFields();
     editingPathName = null;
 
 
@@ -1715,6 +1801,7 @@ function openPathModal(path = null) {
         if (path.fallback) {
             document.querySelector('input[name="fallback"]').value = path.fallback;
         }
+        populatePathRelayFields(path);
     } else {
         title.textContent = 'Add New Path';
         submitBtn.textContent = 'Add Path';
@@ -1869,6 +1956,7 @@ function openConfigPathModal(path = null) {
     const submitBtn = document.getElementById('path-submit-btn');
 
     form.reset();
+    resetPathRelayFields();
     editingConfigPathName = null;
 
 
@@ -1914,6 +2002,7 @@ function openConfigPathModal(path = null) {
         if (path.fallback) {
             document.querySelector('input[name="fallback"]').value = path.fallback;
         }
+        populatePathRelayFields(path);
     } else {
         title.textContent = 'Add Path Configuration';
         submitBtn.textContent = 'Add Path';
@@ -2257,6 +2346,24 @@ document.getElementById('cancel-path-btn')?.addEventListener('click', () => {
     modal.classList.remove('flex');
 });
 
+form?.addEventListener('change', (event) => {
+    if (event.target.matches('input[name="path_relay_mode"]')) {
+        setPathRelayMode(event.target.value);
+    }
+});
+
+form?.addEventListener('click', (event) => {
+    if (event.target.closest('#path-forward-add')) {
+        addPathForwardDestination();
+        return;
+    }
+
+    if (event.target.closest('[data-forward-remove]')) {
+        event.target.closest('[data-forward-item]')?.remove();
+        updatePathForwardDestinationLabels();
+    }
+});
+
 form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -2264,10 +2371,47 @@ form?.addEventListener('submit', async (e) => {
     const sourceType = fd.get('source_type');
 
 
+    const relayMode = fd.get('path_relay_mode');
+    if (!relayMode) {
+        alert('Choose Forward or Hooks before saving this path.');
+        return;
+    }
+
     const payload = {
         name,
         source_type: sourceType,
     };
+
+    if (relayMode === 'hooks') {
+        payload.runOnAvailable = fd.get('run_on_available') || '';
+        payload.runOnAvailableRestart = fd.get('run_on_available_restart') === 'on';
+        payload.forward = [];
+    } else {
+        payload.runOnAvailable = '';
+        payload.runOnAvailableRestart = false;
+        payload.forward = [];
+        const destinationRows = document.querySelectorAll('#path-forward-items [data-forward-item]');
+        for (const [index, row] of Array.from(destinationRows).entries()) {
+            const dest = row.querySelector('[data-forward-field="dest"]').value.trim();
+            if (!dest) {
+                alert(`Destination ${index + 1} must include a destination URL.`);
+                return;
+            }
+
+            let extras = {};
+            try {
+                extras = JSON.parse(row.dataset.forwardExtras || '{}');
+            } catch {
+                alert(`Destination ${index + 1} contains invalid preserved settings.`);
+                return;
+            }
+            const entry = { ...extras, dest };
+            row.querySelectorAll('[data-forward-field]:not([data-forward-field="dest"])').forEach((input) => {
+                if (input.value.trim()) entry[input.dataset.forwardField] = input.value.trim();
+            });
+            payload.forward.push(entry);
+        }
+    }
 
     if (sourceType === 'url') {
         const source = fd.get('source');
