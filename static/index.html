@@ -380,12 +380,12 @@
             id="add-path-modal"
             class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"
         >
-            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-                <div class="p-6">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4" id="path-modal-title">
-                        Add New Path
-                    </h3>
-                    <form id="add-path-form">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] flex flex-col overflow-hidden">
+                <form id="add-path-form" class="flex flex-col min-h-0">
+                    <div class="p-6 overflow-y-auto min-h-0">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4" id="path-modal-title">
+                            Add New Path
+                        </h3>
                         <div class="mb-4">
                             <label
                                 class="block text-sm font-medium text-gray-700 mb-1"
@@ -528,24 +528,65 @@
                             <p class="text-xs text-gray-500 mt-1">Path or URL used when this stream is unavailable.</p>
                         </div>
 
-                        <div class="flex justify-end space-x-3">
-                            <button
-                                type="button"
-                                id="cancel-path-btn"
-                                class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                id="path-submit-btn"
-                                class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                                Add Path
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                        <fieldset class="mb-4 border-t border-gray-200 pt-4">
+                            <legend class="text-sm font-medium text-gray-700 mb-2">Relay & Hooks</legend>
+                            <p id="path-relay-conflict" class="mb-3 hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">Forward dan Hooks sama-sama terkonfigurasi. Pilih metode yang akan dipakai; metode lainnya akan dikosongkan saat disimpan.</p>
+
+                            <div class="space-y-3">
+                                <div class="rounded-lg border border-gray-200 p-4">
+                                    <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                                        <input type="radio" name="path_relay_mode" value="forward" required class="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                        Forward
+                                    </label>
+                                    <div id="path-forward-panel" class="hidden mt-4 border-t border-gray-100 pt-4">
+                                        <div class="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                                            <span>Forward destinations</span>
+                                            <span class="cursor-help text-gray-400" title="Tujuan relay MediaMTX. RTMP destination memakai format rtmp://host/path#streamKey." aria-label="Tujuan relay MediaMTX. RTMP destination memakai format rtmp://host/path#streamKey." tabindex="0">ⓘ</span>
+                                        </div>
+                                        <div id="path-forward-items" class="space-y-3"></div>
+                                        <button type="button" id="path-forward-add" class="mt-3 inline-flex items-center gap-1 rounded-md bg-blue-500 px-3 py-2 text-sm font-medium text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                            <span aria-hidden="true">+</span> Add destination
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-lg border border-gray-200 p-4">
+                                    <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                                        <input type="radio" name="path_relay_mode" value="hooks" required class="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                        Hooks (runOnAvailable)
+                                    </label>
+                                    <div id="path-hooks-panel" class="hidden mt-4 border-t border-gray-100 pt-4">
+                                        <label for="path-run-on-available" class="block text-sm font-medium text-gray-700 mb-1">runOnAvailable command</label>
+                                        <textarea id="path-run-on-available" name="run_on_available" rows="3" spellcheck="false" placeholder="/usr/bin/ffmpeg ..." class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                                        <p class="text-xs text-gray-500 mt-1">Command FFmpeg dapat menarik RTMP sumber langsung (A) atau membaca RTSP lokal MediaMTX (B).</p>
+                                        <label class="mt-3 flex items-center text-sm text-gray-700">
+                                            <input type="checkbox" name="run_on_available_restart" class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                                            Restart command if it exits (runOnAvailableRestart)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-gray-500">Pilih satu metode relay agar tujuan tidak menerima publisher ganda.</p>
+                        </fieldset>
+
+                    </div>
+                    <div class="flex justify-end space-x-3 border-t border-gray-200 bg-white p-6 pt-4 shrink-0">
+                        <button
+                            type="button"
+                            id="cancel-path-btn"
+                            class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            id="path-submit-btn"
+                            class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            Add Path
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
 

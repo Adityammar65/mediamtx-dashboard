@@ -30,6 +30,7 @@ services:
         - "8889:8889"   # WebRTC / WHEP
         - "9997:9997"   # API
         - "8890:8890"   # SRT
+        - "8189:8189/udp"
       volumes:
         - ./mediamtx.yml:/mediamtx.yml
         - ./logs:/var/log/mediamtx

@@ -95,12 +95,17 @@ async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = get_mediamtx_client()
+    try:
+        await client.merge_server_internal_users()
+    except Exception as exc:
+        print(f"[Warning] Failed to capture MediaMTX internal users: {exc}")
     health_task = asyncio.create_task(client._cekMediamtxHealth())
     clean_task = asyncio.create_task(clean_old_logs())
     yield
     health_task.cancel()
     clean_task.cancel()
     MediaMTXClient.force_flush_sync()
+    MediaMTXClient.force_flush_internal_users_sync()
     client = get_mediamtx_client()
     await client.close()
     monitor = get_system_monitor()
@@ -217,28 +222,49 @@ async def list_internal_users(client: MediaMTXClient = Depends(get_mediamtx_clie
 
 @app.post("/api/internal-users")
 async def create_internal_user(payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
-    user = str(payload.get("user", "")).strip()
-    password = str(payload.get("password", ""))
+    raw_user = payload.get("user")
+    raw_password = payload.get("password")
+    if not isinstance(raw_user, str) or not raw_user.strip():
+        raise HTTPException(400, "user must be a non-blank string")
+    if not isinstance(raw_password, str) or not raw_password.strip():
+        raise HTTPException(400, "password must be a non-blank string")
+    user = raw_user.strip()
+    password = raw_password
     permissions = payload.get("permissions", [])
-    if not user or not password or not isinstance(permissions, list) or not permissions:
-        raise HTTPException(400, "user, password and permissions are required")
-    data = await client.create_internal_user(user, password, permissions)
+    if not isinstance(permissions, list) or not permissions:
+        raise HTTPException(400, "permissions are required")
+    if any(not isinstance(permission, dict) or not permission.get("action") or not isinstance(permission.get("path"), str) for permission in permissions):
+        raise HTTPException(400, "Each permission requires action and path")
+    ips = payload.get("ips", [])
+    if not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips):
+        raise HTTPException(400, "ips must be a list of strings")
+    data = await client.create_internal_user(user, password, permissions, ips)
     return StandardResponse.success(data, "Internal user created")
 
 
-@app.patch("/api/internal-users/{user_id}")
-async def update_internal_user(user_id: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
-    user = str(payload.get("user", "")).strip()
+@app.patch("/api/internal-users/{username:path}")
+async def update_internal_user(username: str, payload: dict = Body(...), client: MediaMTXClient = Depends(get_mediamtx_client)):
+    raw_user = payload.get("user")
+    if not isinstance(raw_user, str) or not raw_user.strip():
+        raise HTTPException(400, "user must be a non-blank string")
+    user = raw_user.strip()
     permissions = payload.get("permissions", [])
-    if not user or not isinstance(permissions, list) or not permissions:
-        raise HTTPException(400, "user and permissions are required")
-    data = await client.update_internal_user(user_id, user, payload.get("password") or None, permissions)
+    if not isinstance(permissions, list) or not permissions:
+        raise HTTPException(400, "permissions are required")
+    raw_password = payload.get("password")
+    if raw_password is not None and not isinstance(raw_password, str):
+        raise HTTPException(400, "password must be a string when provided")
+    password = raw_password.strip() if isinstance(raw_password, str) and raw_password.strip() else None
+    ips = payload.get("ips")
+    if ips is not None and (not isinstance(ips, list) or any(not isinstance(ip, str) for ip in ips)):
+        raise HTTPException(400, "ips must be a list of strings")
+    data = await client.update_internal_user(username, user, password, permissions, ips)
     return StandardResponse.success(data, "Internal user updated")
 
 
-@app.delete("/api/internal-users/{user_id}")
-async def delete_internal_user(user_id: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
-    await client.delete_internal_user(user_id)
+@app.delete("/api/internal-users/{username:path}")
+async def delete_internal_user(username: str, client: MediaMTXClient = Depends(get_mediamtx_client)):
+    await client.delete_internal_user(username)
     return StandardResponse.success(None, "Internal user deleted")
 
 
@@ -290,6 +316,9 @@ async def create_path(
         max_readers=payload.max_readers,
         fallback=payload.fallback,
         source_redirect=payload.source_redirect,
+        run_on_available=payload.run_on_available,
+        run_on_available_restart=payload.run_on_available_restart,
+        forward=[item.model_dump(exclude_none=True) for item in payload.forward],
     )
     return StandardResponse.success(data, "Path created")
 

@@ -524,34 +524,97 @@ async function initInternalUsers() {
     const body = document.getElementById('internal-users-body');
     const status = document.getElementById('internal-user-status');
     if (!body) return;
+    let users = [];
     try {
         const result = await fetchAPI('/internal-users');
-        const users = (result.data || []).sort((a, b) => String(a.permissions?.[0]?.path || '').localeCompare(String(b.permissions?.[0]?.path || '')));
+        users = (result.data || []).sort((a, b) => String(a.user || '').localeCompare(String(b.user || '')));
         body.innerHTML = users.map(item => {
             const permissions = item.permissions || [];
-            const path = permissions[0]?.path || '';
-            const checks = ['read', 'publish', 'playback', 'api', 'metrics', 'pprof'].map(action => `<label class="mr-3 whitespace-nowrap"><input type="checkbox" data-permission="${action}" ${permissions.some(p => p.action === action) ? 'checked' : ''}> ${action}</label>`).join('');
-            return `<tr data-user-id="${escapeHtml(item.id || '')}" data-user="${escapeHtml(item.user || '')}" data-path="${escapeHtml(path)}"><td class="px-6 py-3"><input data-field="user" value="${escapeHtml(item.user || '')}" class="w-32 rounded border px-2 py-1"></td><td class="px-6 py-3"><input data-field="path" value="${escapeHtml(path)}" class="w-full min-w-64 rounded border px-2 py-1 font-mono"></td><td class="px-6 py-3 text-xs">${checks}</td><td class="px-6 py-3 whitespace-nowrap"><button type="button" data-action="save" class="mr-2 rounded bg-blue-600 px-3 py-1 text-white">Save</button><button type="button" data-action="delete" class="rounded bg-red-600 px-3 py-1 text-white">Delete</button></td></tr>`;
-        }).join('') || '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No users configured</td></tr>';
-    } catch (error) { body.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`; }
+            const rows = permissions.map(p => `<div class="font-mono text-xs">${escapeHtml(p.path || '(global)')} <span class="font-sans text-gray-500">[${escapeHtml(p.action)}]</span></div>`).join('');
+            const actions = permissions.map(p => `${escapeHtml(p.action)}:${escapeHtml(p.path || '(global)')}`).join(', ');
+            return `<tr data-user-id="${escapeHtml(item.id || '')}"><td class="px-6 py-3 font-mono text-sm">${escapeHtml(item.user || '')}</td><td class="px-6 py-3">${rows}</td><td class="px-6 py-3 text-xs">${escapeHtml(actions)}</td><td class="px-6 py-3 text-xs">${escapeHtml((item.ips || []).join(', '))}</td><td class="px-6 py-3 text-xs font-mono">${escapeHtml(item.id || '')}</td><td class="px-6 py-3 whitespace-nowrap"><button type="button" data-action="edit" class="mr-2 rounded bg-blue-600 px-3 py-1 text-white">Edit</button><button type="button" data-action="delete" class="rounded bg-red-600 px-3 py-1 text-white">Delete</button></td></tr>`;
+        }).join('') || '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">No users configured</td></tr>';
+    } catch (error) { body.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`; }
+    const pathsEl = document.getElementById('internal-user-paths');
+    const actions = ['read', 'publish', 'playback', 'api', 'metrics', 'pprof'];
+    const addPathRow = permission => {
+        const row = document.createElement('div');
+        row.className = 'rounded border p-3';
+        row.innerHTML = `<div class="flex gap-2"><input data-field="path" class="min-w-0 flex-1 rounded border px-2 py-1 font-mono text-sm" placeholder="Path or regex" value="${escapeHtml(permission?.path ?? '')}"><button type="button" data-remove-path class="rounded bg-red-50 px-2 text-red-600">Remove</button></div><div class="mt-2 flex flex-wrap gap-3 text-xs">${actions.map(action => `<label><input type="checkbox" data-path-action="${action}" ${permission?.action === action ? 'checked' : ''}> ${action}</label>`).join('')}</div>`;
+        pathsEl.append(row);
+    };
+    const resetForm = () => {
+        form.reset();
+        document.getElementById('internal-user-edit-id').value = '';
+        document.getElementById('internal-user-password').required = true;
+        document.getElementById('internal-user-password').placeholder = '';
+        document.getElementById('cancel-user-edit').classList.add('hidden');
+        form.querySelector('button[type="submit"]').textContent = 'Add user';
+        pathsEl.replaceChildren();
+        addPathRow({ path: '', action: 'read' });
+    };
+    resetForm();
+    document.getElementById('add-path-btn').onclick = () => addPathRow({});
+    document.getElementById('cancel-user-edit').onclick = resetForm;
+    pathsEl.onclick = event => { if (event.target.closest('[data-remove-path]')) event.target.closest('.rounded.border').remove(); };
     body.onclick = async event => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
         const row = button.closest('tr');
-        const permissions = [...row.querySelectorAll('[data-permission]:checked')].map(input => ({ action: input.dataset.permission, path: row.querySelector('[data-field="path"]').value.trim() }));
+        const item = users.find(user => String(user.id) === row.dataset.userId);
+        if (!item) return;
         try {
-            if (button.dataset.action === 'delete') await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'DELETE' });
-            else await fetchAPI(`/internal-users/${encodeURIComponent(row.dataset.userId)}`, { method: 'PATCH', body: JSON.stringify({ user: row.querySelector('[data-field="user"]').value.trim(), permissions }) });
-            await initInternalUsers();
-        } catch (error) { showError(error.message); }
+            if (button.dataset.action === 'delete') {
+                await fetchAPI(`/internal-users/${encodeURIComponent(item.user)}`, { method: 'DELETE' });
+                await initInternalUsers();
+                return;
+            }
+            document.getElementById('internal-user-edit-id').value = item.user;
+            document.getElementById('internal-user-name').value = item.user || '';
+            document.getElementById('internal-user-password').value = '';
+            document.getElementById('internal-user-password').required = false;
+            document.getElementById('internal-user-password').placeholder = 'Leave blank to keep current password';
+            document.getElementById('internal-user-ips').value = (item.ips || []).join(', ');
+            document.getElementById('cancel-user-edit').classList.remove('hidden');
+            form.querySelector('button[type="submit"]').textContent = 'Save changes';
+            pathsEl.replaceChildren();
+            (item.permissions || []).forEach(addPathRow);
+            form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (error) {
+            if (error.status === 404) {
+                await initInternalUsers();
+                status.textContent = 'User was already removed or changed. List refreshed.';
+            } else showError(error.message);
+        }
     };
-    form?.addEventListener('submit', async event => {
+    let submitting = false;
+    form.onsubmit = async event => {
         event.preventDefault();
-        const permissions = [...form.querySelectorAll('[name="new-permission"]:checked')].map(input => ({ action: input.value, path: document.getElementById('internal-user-path').value.trim() }));
-        if (!permissions.length) { status.textContent = 'Select at least one permission.'; return; }
-        try { await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user: document.getElementById('internal-user-name').value.trim(), password: document.getElementById('internal-user-password').value, permissions }) }); status.textContent = 'Saved.'; form.reset(); document.getElementById('internal-user-path').value = '~^atcs-kota/(.+)'; await initInternalUsers(); } catch (error) { status.textContent = error.message; }
-    }, { once: true });
-    loadConfigPathGroups();
+        if (submitting) return;
+        const permissions = [...pathsEl.children].flatMap(row => [...row.querySelectorAll('[data-path-action]:checked')].map(input => ({ action: input.dataset.pathAction, path: row.querySelector('[data-field="path"]').value.trim() })));
+        if (!permissions.length || [...pathsEl.children].some(row => !row.querySelector('[data-path-action]:checked'))) { status.textContent = 'Each path needs at least one permission.'; return; }
+        const user = document.getElementById('internal-user-name').value.trim();
+        const password = document.getElementById('internal-user-password').value;
+        const ips = document.getElementById('internal-user-ips').value.split(',').map(ip => ip.trim()).filter(Boolean);
+        const editUsername = document.getElementById('internal-user-edit-id').value;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitting = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+        try {
+            if (editUsername) await fetchAPI(`/internal-users/${encodeURIComponent(editUsername)}`, { method: 'PATCH', body: JSON.stringify({ user, password, ips, permissions }) });
+            else await fetchAPI('/internal-users', { method: 'POST', body: JSON.stringify({ user, password, ips, permissions }) });
+            status.textContent = 'Saved.';
+            await initInternalUsers();
+        } catch (error) {
+            status.textContent = error.message;
+            if (error.status === 404) {
+                await initInternalUsers();
+                status.textContent = 'User no longer exists on MediaMTX. List refreshed.';
+            }
+        }
+        finally { submitting = false; submitBtn.disabled = false; submitBtn.textContent = userId ? 'Save changes' : 'Add user'; }
+    };
 }
 
 function bindPageEvents(page) {
@@ -999,7 +1062,7 @@ async function cekHealth() {
     try {
         const health = await fetchAPI('/server/health');
         if (currentPage != 'dashboard') {
-            setConnectionStatus(health.success);
+            setConnectionStatus(health.data.connected);
             return;
         }
         if (health.success) {
@@ -1036,10 +1099,8 @@ async function loadStreams() {
             streamsCurrentPage = 1;
             renderStreams(allStreams);
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -1223,14 +1284,28 @@ function getListenerUrl(address, scheme, pathName, suffix = '', publicHost = '')
 function getPathOutputUrls(serverConfig, pathName, publicHost, credentials = {}) {
     if (!serverConfig) return [];
     const outputs = [];
+
+    const username = encodeURIComponent(credentials.username || '');
+    const password = encodeURIComponent(credentials.password || '');
+    const hasAuth = username || password;
+
     const addOutput = (label, url, vlcCompatible = false) => {
-        if (url) {
-            const username = encodeURIComponent(credentials.username || '');
-            const password = encodeURIComponent(credentials.password || '');
-            const auth = username || password ? `${username}:${password}@` : '';
+          if (url) {
+              let finalUrl = url;
+        if (hasAuth) {
+              if (label === 'RTMP') {
+                  const queryParams = [];
+                  if (credentials.username) queryParams.push(`user=${username}`);
+                  if (credentials.password) queryParams.push(`pass=${password}`);
+                  finalUrl = `${url}?${queryParams.join('&')}`;
+              } else {
+                  const auth = `${username}:${password}@`;
+                  finalUrl = url.replace('://', `://${auth}`);
+              }
+        }
             outputs.push({
                 label,
-                url: auth ? url.replace('://', `://${auth}`) : url,
+                url: finalUrl,
                 vlcCompatible,
             });
         }
@@ -1348,11 +1423,9 @@ async function refreshPathRuntime() {
         document.getElementById('path-detail-summary-status').textContent = status.label;
         document.getElementById('path-detail-summary-status').className = `mt-2 text-lg font-semibold ${status.online ? 'text-green-700' : 'text-gray-900'}`;
         document.getElementById('path-detail-runtime-note').textContent = status.note;
-        setConnectionStatus(true);
     } catch (error) {
         if (pathDetailState !== state || currentPage !== 'path-detail') return;
         showError(`path runtime: ${error.message}`);
-        setConnectionStatus(false);
     }
 }
 
@@ -1441,13 +1514,37 @@ function showPathNotice(message, type = 'success') {
 }
 
 async function copyPathText(text, label) {
-    try {
-        await navigator.clipboard.writeText(text);
-        showPathNotice(`${label} copied to clipboard.`);
-    } catch (error) {
-        showPathNotice(`Could not copy ${label.toLowerCase()}: ${error.message}`, 'warning');
-    }
-}
+  try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              showPathNotice(`${label} copied to clipboard.`);
+              return;
+          }
+
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+
+          textArea.style.position = "fixed";
+          textArea.style.top = "0";
+          textArea.style.left = "0";
+          textArea.style.opacity = "0";
+
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+
+          if (successful) {
+              showPathNotice(`${label} copied to clipboard.`);
+          } else {
+              throw new Error('document.execCommand(copy) failed');
+          }
+      } catch (error) {
+          showPathNotice(`Could not copy ${label.toLowerCase()}: ${error.message}`, 'warning');
+      }
+  }
 
 function copyPathSource() {
     const source = getPathSource(pathDetailState.config, pathDetailState.runtime);
@@ -1507,6 +1604,7 @@ async function testPathPreview() {
     document.getElementById('path-detail-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
     const hls = pathDetailState?.outputUrls.find(output => output.label === 'HLS');
     const webRtc = pathDetailState?.outputUrls.find(output => output.label === 'WebRTC');
+
     const video = document.getElementById('path-detail-video');
     const webRtcFrame = document.getElementById('path-detail-webrtc');
     if (pathHlsPlayer) {
@@ -1536,6 +1634,17 @@ async function testPathPreview() {
 
     document.getElementById('path-detail-preview-status').textContent = 'Loading HLS stream...';
     document.getElementById('path-detail-preview-empty').classList.add('hidden');
+
+    if (pathDetailState && pathDetailState.name) {
+        try {
+            const encodedUrl = encodeURIComponent(hls.url);
+            await fetchAPI(`/streaming/${pathDetailState.name}?url=${encodedUrl}`, { method: 'GET' });
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (err) {
+            console.warn('Gagal memicu warm-up stream:', err);
+        }
+    }
+
     video.classList.remove('hidden');
     if (nativeHls) {
         video.src = hls.url;
@@ -1584,6 +1693,91 @@ async function deleteCurrentPath() {
 
 let editingPathName = null;
 
+const PATH_FORWARD_FIELDS = [
+    ['dest', 'Destination', true],
+    ['destFingerprint', 'Destination fingerprint', false],
+    ['moqTransport', 'MoQ transport', false],
+    ['whipBearerToken', 'WHIP bearer token', false],
+];
+
+function renderPathForwardDestination(item = {}) {
+    const knownFields = new Set(PATH_FORWARD_FIELDS.map(([key]) => key));
+    const extras = Object.fromEntries(Object.entries(item).filter(([key]) => !knownFields.has(key)));
+    const fields = PATH_FORWARD_FIELDS.map(([key, label, required]) => `
+        <label class="block min-w-0">
+            <span class="mb-1 block text-xs font-medium text-gray-600">${label}</span>
+            <input data-forward-field="${key}" type="text" value="${escapeHtml(item[key] ?? '')}" ${required ? 'aria-required="true"' : ''} placeholder="${key === 'dest' ? 'rtmp://host/live#stream-key' : ''}" class="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </label>
+    `).join('');
+
+    return `
+        <div data-forward-item data-forward-extras="${escapeHtml(JSON.stringify(extras))}" class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div class="mb-3 flex items-center justify-between">
+                <span data-forward-item-label class="text-xs font-semibold uppercase tracking-wide text-gray-500">Destination</span>
+                <button type="button" data-forward-remove class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Remove</button>
+            </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">${fields}</div>
+        </div>
+    `;
+}
+
+function renderPathForwardDestinations(forward = []) {
+    const container = document.getElementById('path-forward-items');
+    if (!container) return;
+    container.innerHTML = forward.map(renderPathForwardDestination).join('');
+    updatePathForwardDestinationLabels(container);
+}
+
+function updatePathForwardDestinationLabels(container = document.getElementById('path-forward-items')) {
+    container?.querySelectorAll('[data-forward-item-label]').forEach((label, index) => {
+        label.textContent = `Destination ${index + 1}`;
+    });
+}
+
+function addPathForwardDestination(item = {}) {
+    const container = document.getElementById('path-forward-items');
+    if (!container) return;
+    container.insertAdjacentHTML('beforeend', renderPathForwardDestination(item));
+    updatePathForwardDestinationLabels(container);
+}
+
+function setPathRelayMode(mode, hasConflict = false) {
+    document.querySelectorAll('input[name="path_relay_mode"]').forEach((radio) => {
+        radio.checked = radio.value === mode;
+    });
+    document.getElementById('path-forward-panel')?.classList.toggle('hidden', mode !== 'forward');
+    document.getElementById('path-hooks-panel')?.classList.toggle('hidden', mode !== 'hooks');
+    document.getElementById('path-relay-conflict')?.classList.toggle('hidden', !hasConflict);
+    const forwardItems = document.getElementById('path-forward-items');
+    if (mode === 'forward' && forwardItems && forwardItems.children.length === 0) {
+        addPathForwardDestination();
+    }
+}
+
+function populatePathRelayFields(path) {
+    const runOnAvailable = path.runOnAvailable ?? path.run_on_available ?? '';
+    const restart = path.runOnAvailableRestart ?? path.run_on_available_restart ?? false;
+    const forward = Array.isArray(path.forward) ? path.forward : [];
+    document.getElementById('path-run-on-available').value = runOnAvailable;
+    document.querySelector('input[name="run_on_available_restart"]').checked = restart === true;
+    renderPathForwardDestinations(forward);
+
+    const hasHook = Boolean(runOnAvailable.trim()) || restart === true;
+    const hasForward = forward.some((item) => typeof item?.dest === 'string' && item.dest.trim());
+    if (hasHook && hasForward) {
+        setPathRelayMode('', true);
+    } else {
+        setPathRelayMode(hasForward ? 'forward' : 'hooks');
+    }
+}
+
+function resetPathRelayFields() {
+    document.getElementById('path-run-on-available').value = '';
+    document.querySelector('input[name="run_on_available_restart"]').checked = false;
+    renderPathForwardDestinations([]);
+    setPathRelayMode('hooks');
+}
+
 function openPathModal(path = null) {
     const modal = document.getElementById('add-path-modal');
     const form = document.getElementById('add-path-form');
@@ -1591,6 +1785,7 @@ function openPathModal(path = null) {
     const submitBtn = document.getElementById('path-submit-btn');
 
     form.reset();
+    resetPathRelayFields();
     editingPathName = null;
 
 
@@ -1640,6 +1835,7 @@ function openPathModal(path = null) {
         if (path.fallback) {
             document.querySelector('input[name="fallback"]').value = path.fallback;
         }
+        populatePathRelayFields(path);
     } else {
         title.textContent = 'Add New Path';
         submitBtn.textContent = 'Add Path';
@@ -1794,6 +1990,7 @@ function openConfigPathModal(path = null) {
     const submitBtn = document.getElementById('path-submit-btn');
 
     form.reset();
+    resetPathRelayFields();
     editingConfigPathName = null;
 
 
@@ -1839,6 +2036,7 @@ function openConfigPathModal(path = null) {
         if (path.fallback) {
             document.querySelector('input[name="fallback"]').value = path.fallback;
         }
+        populatePathRelayFields(path);
     } else {
         title.textContent = 'Add Path Configuration';
         submitBtn.textContent = 'Add Path';
@@ -1901,10 +2099,8 @@ async function loadConfigGlobal() {
             document.getElementById('config-global-form-status').classList.add('hidden');
             document.getElementById('config-global-json-status').classList.add('hidden');
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
         document.getElementById('config-global-editor').value = 'Failed to load configuration';
     }
 }
@@ -1913,12 +2109,11 @@ function populateConfigGlobalForm(config) {
     const form = document.querySelector('#page-config-global');
     if (!form) return;
 
-
     const simpleFields = [
-        'logLevel', 'logFormat', 'readTimeout', 'writeTimeout', 'readHeaderTimeout',
+        'logLevel', 'logFile', 'readTimeout', 'writeTimeout',
         'rtspAddress', 'rtmpAddress', 'hlsAddress', 'webrtcAddress', 'srtAddress', 'playbackAddress',
-        'rtpAddress', 'rtcpAddress',
-        'webrtcICEHostNAT1To1', 'webrtcICEUDPMulticastAddress', 'webrtcICEPortRange', 'webrtcAdditionalHosts',
+        'rtpAddress', 'rtcpAddress', 'multicastIPRange',
+        'webrtcLocalUDPAddress', 'webrtcLocalTCPAddress', 'webrtcAdditionalHosts',
         'srtLatency', 'srtMaxBandwidth',
         'hlsAllowOrigin', 'hlsSegmentCount', 'hlsSegmentDuration', 'hlsPartDuration'
     ];
@@ -1930,15 +2125,12 @@ function populateConfigGlobalForm(config) {
             if (value !== undefined && value !== null) {
                 if (el.type === 'checkbox') {
                     el.checked = value;
-                } else if (el.multiple) {
-
                 } else {
                     el.value = value;
                 }
             }
         }
     });
-
 
     ['logDestinations', 'rtspTransports'].forEach(name => {
         const checkboxes = form.querySelectorAll(`[name="${name}"][type="checkbox"]`);
@@ -1950,14 +2142,13 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    const apiFields = ['enabled', 'address', 'encryption', 'authentication', 'trustedProxies', 'corsOrigin'];
+    const apiFields = ['api', 'apiAddress', 'apiEncryption', 'apiAllowOrigin', 'apiTrustedProxies'];
     apiFields.forEach(name => {
-        const el = form.querySelector(`[name="api.${name}"]`);
+        const el = form.querySelector(`[name="${name}"]`);
         if (el) {
-            const value = getNestedValue(config, `api.${name}`);
+            const value = getNestedValue(config, name);
             if (value !== undefined && value !== null) {
-                if (el.multiple || name === 'trustedProxies' || name === 'corsOrigin') {
+                if (el.multiple || name === 'apiTrustedProxies' || name === 'apiAllowOrigin') {
                     if (Array.isArray(value)) {
                         el.value = value.join(', ');
                     } else if (typeof value === 'string') {
@@ -1970,8 +2161,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    ['metrics.enabled', 'metrics.address', 'metrics.encryption'].forEach(name => {
+    ['metrics', 'metricsAddress', 'metricsEncryption'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el) {
             const value = getNestedValue(config, name);
@@ -1981,8 +2171,7 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    ['pprof.enabled', 'pprof.address'].forEach(name => {
+    ['pprof', 'pprofAddress', 'pprofEncryption'].forEach(name => {
         const el = form.querySelector(`[name="${name}"]`);
         if (el) {
             const value = getNestedValue(config, name);
@@ -1992,32 +2181,25 @@ function populateConfigGlobalForm(config) {
         }
     });
 
-
-    const webrtcEncEl = form.querySelector('[name="webrtcEncryption"]');
-    if (webrtcEncEl) {
-        const value = getNestedValue(config, 'webrtcEncryption');
-        if (value !== undefined && value !== null) {
-            webrtcEncEl.value = value;
+    ['rtsp', 'rtmp', 'hls', 'webrtc', 'srt', 'playback'].forEach(name => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) {
+            const value = getNestedValue(config, name);
+            if (value !== undefined && value !== null) {
+                el.value = value;
+            }
         }
-    }
+    });
 
-
-    const srtEncEl = form.querySelector('[name="srtEncryption"]');
-    if (srtEncEl) {
-        const value = getNestedValue(config, 'srtEncryption');
-        if (value !== undefined && value !== null) {
-            srtEncEl.value = value;
+    ['rtspEncryption', 'webrtcEncryption', 'webrtcIPsFromInterfaces', 'hlsEncryption', 'hlsVariant'].forEach(name => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) {
+            const value = getNestedValue(config, name);
+            if (value !== undefined && value !== null) {
+                el.value = value;
+            }
         }
-    }
-
-
-    const hlsEncEl = form.querySelector('[name="hlsEncryption"]');
-    if (hlsEncEl) {
-        const value = getNestedValue(config, 'hlsEncryption');
-        if (value !== undefined && value !== null) {
-            hlsEncEl.value = value;
-        }
-    }
+    });
 }
 
 function collectConfigGlobalForm() {
@@ -2077,7 +2259,6 @@ async function saveConfigGlobalForm() {
             statusEl.className = 'mt-4 text-sm text-green-600';
 
             setTimeout(function() {
-                console.log('5. Mengeksekusi reload...');
                 window.location.reload();
             }, 1500);
         } else {
@@ -2107,9 +2288,6 @@ async function saveConfigGlobalJSON() {
             method: 'PATCH',
             body: JSON.stringify(config),
         });
-
-        console.log(res);
-        console.log("jajajaaj");
         if (res.success) {
             originalConfig = res.data;
             populateConfigGlobalForm(res.data);
@@ -2117,10 +2295,7 @@ async function saveConfigGlobalJSON() {
             statusEl.textContent = 'Configuration saved successfully';
             statusEl.className = 'mt-3 text-sm text-green-600';
 
-            console.log('Timer dimulai, reload dalam 1.5 detik...');
-
             setTimeout(function() {
-                console.log('Mengeksekusi location.reload()...');
                 window.location.reload(true);
             }, 1500);
 
@@ -2128,7 +2303,6 @@ async function saveConfigGlobalJSON() {
             throw new Error('Failed to save');
         }
     } catch (e) {
-        console.log(`Error: ${e.message}`);
         statusEl.textContent = `Error: ${e.message}`;
         statusEl.className = 'mt-3 text-sm text-red-600';
     } finally {
@@ -2182,6 +2356,24 @@ document.getElementById('cancel-path-btn')?.addEventListener('click', () => {
     modal.classList.remove('flex');
 });
 
+form?.addEventListener('change', (event) => {
+    if (event.target.matches('input[name="path_relay_mode"]')) {
+        setPathRelayMode(event.target.value);
+    }
+});
+
+form?.addEventListener('click', (event) => {
+    if (event.target.closest('#path-forward-add')) {
+        addPathForwardDestination();
+        return;
+    }
+
+    if (event.target.closest('[data-forward-remove]')) {
+        event.target.closest('[data-forward-item]')?.remove();
+        updatePathForwardDestinationLabels();
+    }
+});
+
 form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -2189,10 +2381,47 @@ form?.addEventListener('submit', async (e) => {
     const sourceType = fd.get('source_type');
 
 
+    const relayMode = fd.get('path_relay_mode');
+    if (!relayMode) {
+        alert('Choose Forward or Hooks before saving this path.');
+        return;
+    }
+
     const payload = {
         name,
         source_type: sourceType,
     };
+
+    if (relayMode === 'hooks') {
+        payload.runOnAvailable = fd.get('run_on_available') || '';
+        payload.runOnAvailableRestart = fd.get('run_on_available_restart') === 'on';
+        payload.forward = [];
+    } else {
+        payload.runOnAvailable = '';
+        payload.runOnAvailableRestart = false;
+        payload.forward = [];
+        const destinationRows = document.querySelectorAll('#path-forward-items [data-forward-item]');
+        for (const [index, row] of Array.from(destinationRows).entries()) {
+            const dest = row.querySelector('[data-forward-field="dest"]').value.trim();
+            if (!dest) {
+                alert(`Destination ${index + 1} must include a destination URL.`);
+                return;
+            }
+
+            let extras = {};
+            try {
+                extras = JSON.parse(row.dataset.forwardExtras || '{}');
+            } catch {
+                alert(`Destination ${index + 1} contains invalid preserved settings.`);
+                return;
+            }
+            const entry = { ...extras, dest };
+            row.querySelectorAll('[data-forward-field]:not([data-forward-field="dest"])').forEach((input) => {
+                if (input.value.trim()) entry[input.dataset.forwardField] = input.value.trim();
+            });
+            payload.forward.push(entry);
+        }
+    }
 
     if (sourceType === 'url') {
         const source = fd.get('source');
@@ -2296,10 +2525,8 @@ async function loadConfigPaths() {
             configPathsCurrentPage = 1;
             renderConfigPaths(allConfigPaths);
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -2313,6 +2540,9 @@ async function loadConfigPathGroups() {
 
           cachedInternalUsers = usersRes.success ? (usersRes.data || []) : [];
           renderConfigPathGroups(pathsRes.data.items || []);
+          if (getPageFromHash() === 'config-paths') {
+              renderConfigPaths(allConfigPaths);
+          }
     } catch (e) {
         showError(e.message);
     }
@@ -2336,13 +2566,30 @@ function getCanonicalGroupName(permPath) {
 }
 
 function getConfigPathGroupName(pathName) {
-    const name = String(pathName || '');
-    const separatorIndex = name.indexOf('/');
-    return separatorIndex === -1 ? '' : name.slice(0, separatorIndex);
+    for (const user of cachedInternalUsers) {
+        for (const perm of (user.permissions || [])) {
+            if (typeof perm.path !== 'string' || !perm.path) continue;
+
+            let isMatch = false;
+            if (perm.path.startsWith('~')) {
+                try {
+                    isMatch = new RegExp(perm.path.slice(1)).test(pathName);
+                } catch (error) {
+                    console.error('Invalid regex', perm.path, error);
+                }
+            } else {
+                isMatch = pathName.startsWith(perm.path);
+            }
+
+            if (isMatch) return getCanonicalGroupName(perm.path);
+        }
+    }
+
+    return 'Tanpa grup';
 }
 
 function renderConfigPathGroups(paths) {
-  const container = document.getElementById('config-path-groups');
+    const container = document.getElementById('config-path-groups');
     if (!container) return;
 
     const groups = new Map();
@@ -2358,54 +2605,27 @@ function renderConfigPathGroups(paths) {
     });
 
     paths.forEach(path => {
-        let matched = false;
-
-        for (const user of cachedInternalUsers) {
-            for (const perm of (user.permissions || [])) {
-                if (!perm.path) continue;
-
-                let isMatch = false;
-                if (perm.path.startsWith('~')) {
-                    try {
-                        const regex = new RegExp(perm.path.slice(1));
-                        isMatch = regex.test(path.name);
-                    } catch (e) { console.error('Invalid regex', perm.path, e); }
-                } else {
-                    isMatch = path.name.startsWith(perm.path);
-                }
-
-                if (isMatch) {
-                    const groupName = getCanonicalGroupName(perm.path);
-                    groups.set(groupName, (groups.get(groupName) || 0) + 1);
-                    matched = true;
-                    break;
-                }
-            }
-            if (matched) break;
-        }
-
-        if (!matched) {
-            groups.set('Tanpa grup', (groups.get('Tanpa grup') || 0) + 1);
-        }
+        const groupName = getConfigPathGroupName(path.name);
+        groups.set(groupName, (groups.get(groupName) || 0) + 1);
     });
 
     container.innerHTML = [...groups.entries()]
-      .sort(([first], [second]) => first.localeCompare(second))
-      .map(([groupName, count]) => {
-          const label = formatGroupLabel(groupName);
-          return `
-              <a
-                  href="#config-paths/${encodeURIComponent(groupName)}"
-                  class="nav-link config-path-group-link"
-                  data-page="config-paths"
-                  data-config-path-group="${escapeHtml(groupName)}"
-                  title="${escapeHtml(groupName)} (${count} paths)"
-              >
-                  <span class="nav-label">${escapeHtml(label)}</span>
-              </a>
-          `;
-      })
-      .join('');
+        .sort(([first], [second]) => first.localeCompare(second))
+        .map(([groupName, count]) => {
+            const label = formatGroupLabel(groupName);
+            return `
+                <a
+                    href="#config-paths/${encodeURIComponent(groupName)}"
+                    class="nav-link config-path-group-link"
+                    data-page="config-paths"
+                    data-config-path-group="${escapeHtml(groupName)}"
+                    title="${escapeHtml(groupName)} (${count} paths)"
+                >
+                    <span class="nav-label">${escapeHtml(label)}</span>
+                </a>
+            `;
+        })
+        .join('');
 
     const selectedGroup = getConfigPathGroupFromHash();
     container.querySelectorAll('[data-config-path-group]').forEach(link => {
@@ -2616,10 +2836,8 @@ async function loadConfigDefaults() {
             if (form) form.dataset.dirty = 'false';
             setConfigDefaultsStatus('', '');
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
         setConfigDefaultsStatus(`Failed to load Path Defaults: ${e.message}`, 'error');
     }
 }
@@ -3264,10 +3482,9 @@ async function saveConfigDefaults() {
         renderConfigDefaults(originalDefaults);
         form.dataset.dirty = 'false';
         setConfigDefaultsStatus(
-            'Path Defaults updated in the MediaMTX runtime. This change is not written to mediamtx.yml and will be lost after a MediaMTX restart.',
+            'Path Defaults updated in the MediaMTX runtime and saved in the dashboard configuration cache for restoration after a MediaMTX restart.',
             'success'
         );
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
         setConfigDefaultsStatus(`Unable to update Path Defaults: ${e.message}`, 'error');
@@ -3344,10 +3561,8 @@ async function loadRuntimeHLS() {
         if (connections.success) renderConnections('hls-connections-body', connections.data.items || []);
         if (sessions.success) renderSessions('hls-sessions-body', sessions.data.items || []);
 
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -3361,10 +3576,8 @@ async function loadRuntimeRTSP() {
         if (connections.success) renderConnections('rtsp-connections-body', connections.data.items || []);
         if (sessions.success) renderSessions('rtsp-sessions-body', sessions.data.items || []);
 
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -3378,10 +3591,8 @@ async function loadRuntimeRTMP() {
         if (connections.success) renderConnections('rtmp-connections-body', connections.data.items || []);
         if (sessions.success) renderSessions('rtmp-sessions-body', sessions.data.items || []);
 
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
     }
 }
 
@@ -3399,10 +3610,8 @@ async function loadRuntimeLogs() {
             logsCurrentPage = 1;
             renderLogs(allLogs);
         }
-        setConnectionStatus(true);
     } catch (e) {
         showError(e.message);
-        setConnectionStatus(false);
         document.getElementById('logs-body').innerHTML = '<tr><td colspan="3" class="px-6 py-12 text-center text-red-600">Failed to load logs</td></tr>';
     }
 }

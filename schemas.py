@@ -22,6 +22,18 @@ class ServerConfigPatch(BaseModel):
 
 # --- Paths ---
 
+class ForwardDestination(BaseModel):
+    model_config = {"extra": "allow"}
+
+    dest: str
+
+    @field_validator("dest")
+    @classmethod
+    def validate_dest(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("forward destination must not be empty")
+        return value
+
 DURATION_PATTERN = re.compile(r'^(\d+h)?(\d+m)?(\d+s)?$')
 
 
@@ -44,6 +56,9 @@ class PathCreateRequest(BaseModel):
     max_readers: Optional[int] = Field(default=None, alias="maxReaders")
     fallback: Optional[str] = None
     source_redirect: Optional[str] = Field(default=None, alias="sourceRedirect")
+    run_on_available: Optional[str] = Field(default=None, alias="runOnAvailable")
+    run_on_available_restart: bool = Field(default=False, alias="runOnAvailableRestart")
+    forward: list[ForwardDestination] = Field(default_factory=list)
 
     @field_validator("max_readers", mode="before")
     @classmethod
@@ -68,6 +83,9 @@ class PathPatchRequest(BaseModel):
     max_readers: Optional[int] = Field(default=None, alias="maxReaders")
     fallback: Optional[str] = None
     source_redirect: Optional[str] = Field(default=None, alias="sourceRedirect")
+    run_on_available: Optional[str] = Field(default=None, alias="runOnAvailable")
+    run_on_available_restart: Optional[bool] = Field(default=None, alias="runOnAvailableRestart")
+    forward: Optional[list[ForwardDestination]] = None
 
     @field_validator("max_readers", mode="before")
     @classmethod
@@ -94,6 +112,9 @@ class PathDetailResponse(BaseModel):
     source_protocols: Optional[list[str]] = None
     run_on_init: Optional[str] = None
     run_on_init_restart: Optional[bool] = None
+    run_on_available: Optional[str] = None
+    run_on_available_restart: Optional[bool] = None
+    forward: list[ForwardDestination] = Field(default_factory=list)
 
     @field_validator("source", "fallback", "source_redirect", mode="before")
     @classmethod

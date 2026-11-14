@@ -14,12 +14,14 @@
                     <div class="flex items-center gap-3">
                         <button
                             id="config-global-reset"
+                            type="button"
                             class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                         >
                             Reset Config
                         </button>
                         <button
                             id="config-global-save-form"
+                            type="button"
                             class="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                             Save Config
@@ -33,7 +35,7 @@
                 <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
                     <header class="mb-5">
                         <h3 class="text-lg font-semibold text-gray-900">Logging</h3>
-                        <p class="mt-1 text-sm text-gray-500">Configure log level and output destinations.</p>
+                        <p class="mt-1 text-sm text-gray-500">Configure log level, output destinations, and log file path.</p>
                     </header>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
@@ -52,12 +54,12 @@
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Log Destinations</label>
-                            <p class="mb-2 text-xs text-gray-500">Choose where MediaMTX writes log messages.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Select one or more destinations. File output requires a configured log file path; syslog sends messages to the system logger." aria-label="More information: Select one or more destinations. File output requires a configured log file path; syslog sends messages to the system logger." role="button" tabindex="0" aria-expanded="false">
+                            <p class="mb-2 text-xs text-gray-500">Choose where MediaMTX writes log messages.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Select one or more destinations. File output writes to logFile; syslog sends messages to the system logger." aria-label="More information: Select one or more destinations. File output writes to logFile; syslog sends messages to the system logger." role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
                                     <input type="checkbox" name="logDestinations" value="stdout" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
                                     <div>
@@ -66,17 +68,10 @@
                                     </div>
                                 </label>
                                 <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
-                                    <input type="checkbox" name="logDestinations" value="stderr" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
-                                    <div>
-                                        <span class="text-sm font-medium text-gray-900">stderr</span>
-                                        <p class="text-xs text-gray-500">Write logs to standard error.</p>
-                                    </div>
-                                </label>
-                                <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
                                     <input type="checkbox" name="logDestinations" value="file" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
                                     <div>
                                         <span class="text-sm font-medium text-gray-900">file</span>
-                                        <p class="text-xs text-gray-500">Write logs to a file (requires file path config).</p>
+                                        <p class="text-xs text-gray-500">Write logs to a file (configured via logFile).</p>
                                     </div>
                                 </label>
                                 <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
@@ -88,10 +83,19 @@
                                 </label>
                             </div>
                         </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Log File</label>
+                            <input type="text" name="logFile" placeholder="mediamtx.log" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Path of the log file when "file" destination is enabled.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: mediamtx.log" aria-label="More information: Default: mediamtx.log" role="button" tabindex="0" aria-expanded="false">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+    </svg>
+</span></p>
+                        </div>
                     </div>
                 </section>
 
-                <!-- API / Control API -->
+                <!-- Control API -->
 
                 <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
                     <header class="mb-5">
@@ -101,11 +105,11 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Enabled</label>
-                            <select name="api.enabled" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <select name="api" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="true">true</option>
                                 <option value="false">false</option>
                             </select>
-                            <p class="mt-1.5 text-xs text-gray-500">Enable the control API.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="When enabled, the API listens on the configured address for management requests" aria-label="More information: When enabled, the API listens on the configured address for management requests" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the control API.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="When enabled, the API listens on apiAddress for management requests" aria-label="More information: When enabled, the API listens on apiAddress for management requests" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -113,7 +117,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                            <input type="text" name="api.address" placeholder=":9997" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="text" name="apiAddress" placeholder=":9997" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <p class="mt-1.5 text-xs text-gray-500">Host:port to bind the API server.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Use :9997 for all interfaces, or 127.0.0.1:9997 for localhost only" aria-label="More information: Use :9997 for all interfaces, or 127.0.0.1:9997 for localhost only" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
@@ -122,26 +126,20 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
-                            <select name="api.encryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="no">no</option>
-                                <option value="yes">yes</option>
-                                <option value="mutual">mutual</option>
+                            <select name="apiEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="false">false</option>
+                                <option value="true">true</option>
                             </select>
-                            <p class="mt-1.5 text-xs text-gray-500">TLS mode for the API.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="no = plain HTTP, yes = HTTPS, mutual = HTTPS with client certificate verification" aria-label="More information: no = plain HTTP, yes = HTTPS, mutual = HTTPS with client certificate verification" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Enable TLS/HTTPS for the API.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="false = plain HTTP, true = HTTPS (requires apiServerKey and apiServerCert)" aria-label="More information: false = plain HTTP, true = HTTPS (requires apiServerKey and apiServerCert)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
                         </div>
                         <div class="md:col-span-3">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Authentication Method</label>
-                            <select name="api.authentication" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="">none</option>
-                                <option value="internal">internal</option>
-                                <option value="external">external</option>
-                                <option value="jwt">jwt</option>
-                            </select>
-                            <p class="mt-1.5 text-xs text-gray-500">Auth mode for API requests.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="none = no auth, internal = built-in users, external = HTTP hook, jwt = JWT tokens" aria-label="More information: none = no auth, internal = built-in users, external = HTTP hook, jwt = JWT tokens" role="button" tabindex="0" aria-expanded="false">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Allow Origin</label>
+                            <input type="text" name="apiAllowOrigin" placeholder="*" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Value of Access-Control-Allow-Origin header for API responses.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="* allows all origins, or specify a single origin (e.g., https://example.com)" aria-label="More information: * allows all origins, or specify a single origin (e.g., https://example.com)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -149,17 +147,8 @@
                         </div>
                         <div class="md:col-span-3">
                             <label class="block text-sm font-medium text-gray-700 mb-1">Trusted Proxies (comma-separated)</label>
-                            <input type="text" name="api.trustedProxies" placeholder="127.0.0.1, 10.0.0.0/8" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="text" name="apiTrustedProxies" placeholder="127.0.0.1, 10.0.0.0/8" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <p class="mt-1.5 text-xs text-gray-500">CIDR ranges or IPs of trusted reverse proxies.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Used to extract real client IP from X-Forwarded-For headers. Comma-separated list of IPs or CIDR blocks" aria-label="More information: Used to extract real client IP from X-Forwarded-For headers. Comma-separated list of IPs or CIDR blocks" role="button" tabindex="0" aria-expanded="false">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
-    </svg>
-</span></p>
-                        </div>
-                        <div class="md:col-span-3">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">CORS Origins (comma-separated)</label>
-                            <input type="text" name="api.corsOrigin" placeholder="*, https://example.com" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Allowed CORS origins for browser clients.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="* allows all origins. For specific origins, list them comma-separated (e.g., https://app.example.com, https://admin.example.com)" aria-label="More information: * allows all origins. For specific origins, list them comma-separated (e.g., https://app.example.com, https://admin.example.com)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -178,11 +167,11 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Enabled</label>
-                            <select name="metrics.enabled" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <select name="metrics" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="true">true</option>
                                 <option value="false">false</option>
                             </select>
-                            <p class="mt-1.5 text-xs text-gray-500">Expose Prometheus metrics.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="When enabled, metrics are available at /metrics on the configured address" aria-label="More information: When enabled, metrics are available at /metrics on the configured address" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Expose Prometheus metrics.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="When enabled, metrics are available at /metrics on metricsAddress" aria-label="More information: When enabled, metrics are available at /metrics on metricsAddress" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -190,7 +179,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                            <input type="text" name="metrics.address" placeholder=":9998" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="text" name="metricsAddress" placeholder=":9998" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <p class="mt-1.5 text-xs text-gray-500">Host:port for metrics endpoint.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :9998. Use 127.0.0.1:9998 to restrict to localhost" aria-label="More information: Default :9998. Use 127.0.0.1:9998 to restrict to localhost" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
@@ -199,12 +188,11 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
-                            <select name="metrics.encryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="no">no</option>
-                                <option value="yes">yes</option>
-                                <option value="mutual">mutual</option>
+                            <select name="metricsEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="false">false</option>
+                                <option value="true">true</option>
                             </select>
-                            <p class="mt-1.5 text-xs text-gray-500">TLS mode for metrics.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="no = plain HTTP, yes = HTTPS, mutual = HTTPS with client certificate verification" aria-label="More information: no = plain HTTP, yes = HTTPS, mutual = HTTPS with client certificate verification" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Enable TLS/HTTPS for metrics.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="false = plain HTTP, true = HTTPS (requires metricsServerKey and metricsServerCert)" aria-label="More information: false = plain HTTP, true = HTTPS (requires metricsServerKey and metricsServerCert)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -223,7 +211,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Enabled</label>
-                            <select name="pprof.enabled" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <select name="pprof" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="true">true</option>
                                 <option value="false">false</option>
                             </select>
@@ -235,8 +223,20 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                            <input type="text" name="pprof.address" placeholder=":9999" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="text" name="pprofAddress" placeholder=":9999" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <p class="mt-1.5 text-xs text-gray-500">Host:port for pprof server.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :9999. Only enable on trusted networks" aria-label="More information: Default :9999. Only enable on trusted networks" role="button" tabindex="0" aria-expanded="false">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+    </svg>
+</span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
+                            <select name="pprofEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="false">false</option>
+                                <option value="true">true</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable TLS/HTTPS for pprof.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="false = plain HTTP, true = HTTPS (requires pprofServerKey and pprofServerCert)" aria-label="More information: false = plain HTTP, true = HTTPS (requires pprofServerKey and pprofServerCert)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -252,11 +252,11 @@
                         <h3 class="text-lg font-semibold text-gray-900">General Timeouts</h3>
                         <p class="mt-1 text-sm text-gray-500">Connection timeout settings in MediaMTX duration format.</p>
                     </header>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Read Timeout</label>
                             <input type="text" name="readTimeout" placeholder="10s" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Max time to wait for incoming data.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration format: 10s, 30s, 1m, 1h. 0 disables timeout" aria-label="More information: Duration format: 10s, 30s, 1m, 1h. 0 disables timeout" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Timeout of read operations.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration format: 10s, 30s, 1m, 1h" aria-label="More information: Duration format: 10s, 30s, 1m, 1h" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -265,16 +265,7 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Write Timeout</label>
                             <input type="text" name="writeTimeout" placeholder="10s" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Max time to wait for outgoing data.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration format: 10s, 30s, 1m, 1h. 0 disables timeout" aria-label="More information: Duration format: 10s, 30s, 1m, 1h. 0 disables timeout" role="button" tabindex="0" aria-expanded="false">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
-    </svg>
-</span></p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Read Header Timeout</label>
-                            <input type="text" name="readHeaderTimeout" placeholder="10s" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Max time to read request headers.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration format: 10s, 30s, 1m. Prevents slowloris attacks" aria-label="More information: Duration format: 10s, 30s, 1m. Prevents slowloris attacks" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Timeout of write operations.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration format: 10s, 30s, 1m, 1h" aria-label="More information: Duration format: 10s, 30s, 1m, 1h" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -288,58 +279,106 @@
                 <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
                     <header class="mb-5">
                         <h3 class="text-lg font-semibold text-gray-900">Listeners</h3>
-                        <p class="mt-1 text-sm text-gray-500">Network addresses for each protocol listener.</p>
+                        <p class="mt-1 text-sm text-gray-500">Enable protocols and configure their network listener addresses.</p>
                     </header>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">RTSP Enabled</label>
+                            <select name="rtsp" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the RTSP server.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">RTSP Address</label>
                             <input type="text" name="rtspAddress" placeholder=":8554" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">RTSP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8554. Empty disables RTSP" aria-label="More information: Default :8554. Empty disables RTSP" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">RTSP TCP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8554" aria-label="More information: Default :8554" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">RTMP Enabled</label>
+                            <select name="rtmp" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the RTMP server.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">RTMP Address</label>
                             <input type="text" name="rtmpAddress" placeholder=":1935" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">RTMP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :1935. Empty disables RTMP" aria-label="More information: Default :1935. Empty disables RTMP" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">RTMP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :1935" aria-label="More information: Default :1935" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">HLS Enabled</label>
+                            <select name="hls" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the HLS server.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">HLS Address</label>
                             <input type="text" name="hlsAddress" placeholder=":8888" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">HLS HTTP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8888. Serves .m3u8 playlists and .ts segments" aria-label="More information: Default :8888. Serves .m3u8 playlists and .ts segments" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">HLS HTTP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8888. Serves .m3u8 playlists and segments" aria-label="More information: Default :8888. Serves .m3u8 playlists and segments" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">WebRTC Enabled</label>
+                            <select name="webrtc" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the WebRTC server.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">WebRTC Address</label>
                             <input type="text" name="webrtcAddress" placeholder=":8889" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">WebRTC listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8889. Used for WHIP/WHEP signaling" aria-label="More information: Default :8889. Used for WHIP/WHEP signaling" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">WebRTC HTTP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8889. Used for WHIP/WHEP signaling and web player" aria-label="More information: Default :8889. Used for WHIP/WHEP signaling and web player" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">SRT Enabled</label>
+                            <select name="srt" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the SRT server.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">SRT Address</label>
                             <input type="text" name="srtAddress" placeholder=":8890" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">SRT listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8890. Secure Reliable Transport for contribution" aria-label="More information: Default :8890. Secure Reliable Transport for contribution" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">SRT UDP listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8890. Secure Reliable Transport" aria-label="More information: Default :8890. Secure Reliable Transport" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Playback Enabled</label>
+                            <select name="playback" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable the recording playback server.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Playback Address</label>
-                            <input type="text" name="playbackAddress" placeholder=":8887" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Unified playback listener.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8887. Single port for HLS, WebRTC, and SRT playback" aria-label="More information: Default :8887. Single port for HLS, WebRTC, and SRT playback" role="button" tabindex="0" aria-expanded="false">
+                            <input type="text" name="playbackAddress" placeholder=":9996" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Recording playback listener address.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :9996. HTTP server for downloading/playing recorded segments" aria-label="More information: Default :9996. HTTP server for downloading/playing recorded segments" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -353,29 +392,22 @@
                 <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
                     <header class="mb-5">
                         <h3 class="text-lg font-semibold text-gray-900">RTSP Settings</h3>
-                        <p class="mt-1 text-sm text-gray-500">Transport protocols and RTP/RTCP port configuration.</p>
+                        <p class="mt-1 text-sm text-gray-500">Transport protocols, encryption, and RTP/RTCP port configuration.</p>
                     </header>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Protocols</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Transports</label>
                             <p class="mb-2 text-xs text-gray-500">Choose the RTSP transports clients may use.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="The RTSP handshake always uses TCP. Select one or more media transports; UDP and multicast require their network ports to be reachable." aria-label="More information: The RTSP handshake always uses TCP. Select one or more media transports; UDP and multicast require their network ports to be reachable." role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
-                                    <input type="checkbox" name="rtspTransports" value="tcp" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
-                                    <div>
-                                        <span class="text-sm font-medium text-gray-900">tcp</span>
-                                        <p class="text-xs text-gray-500">TCP transport (reliable, firewall-friendly).</p>
-                                    </div>
-                                </label>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
                                     <input type="checkbox" name="rtspTransports" value="udp" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
                                     <div>
                                         <span class="text-sm font-medium text-gray-900">udp</span>
-                                        <p class="text-xs text-gray-500">UDP transport (lower latency, no retransmission).</p>
+                                        <p class="text-xs text-gray-500">UDP unicast transport (lower latency).</p>
                                     </div>
                                 </label>
                                 <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
@@ -386,18 +418,31 @@
                                     </div>
                                 </label>
                                 <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer transition-colors">
-                                    <input type="checkbox" name="rtspTransports" value="udp-multicast" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
+                                    <input type="checkbox" name="rtspTransports" value="tcp" class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2">
                                     <div>
-                                        <span class="text-sm font-medium text-gray-900">udp-multicast</span>
-                                        <p class="text-xs text-gray-500">UDP multicast with RTCP feedback.</p>
+                                        <span class="text-sm font-medium text-gray-900">tcp</span>
+                                        <p class="text-xs text-gray-500">TCP transport (reliable, firewall-friendly).</p>
                                     </div>
                                 </label>
                             </div>
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
+                            <select name="rtspEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="no">no</option>
+                                <option value="optional">optional</option>
+                                <option value="strict">strict</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">TLS/RTSPS encryption mode.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="no = plain RTSP, optional = RTSP and RTSPS, strict = RTSPS only" aria-label="More information: no = plain RTSP, optional = RTSP and RTSPS, strict = RTSPS only" role="button" tabindex="0" aria-expanded="false">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+    </svg>
+</span></p>
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">RTP Address</label>
                             <input type="text" name="rtpAddress" placeholder=":8000" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">RTP port for UDP/multicast.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Port for incoming RTP packets. Used with udp/multicast protocols" aria-label="More information: Port for incoming RTP packets. Used with udp/multicast protocols" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">RTP port for UDP.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8000. Port for incoming/outgoing RTP packets" aria-label="More information: Default :8000. Port for incoming/outgoing RTP packets" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -406,7 +451,16 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">RTCP Address</label>
                             <input type="text" name="rtcpAddress" placeholder=":8001" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">RTCP port for UDP/multicast.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Port for RTCP receiver reports. Must be RTP port + 1" aria-label="More information: Port for RTCP receiver reports. Must be RTP port + 1" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">RTCP port for UDP.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8001. Must be RTP port + 1" aria-label="More information: Default :8001. Must be RTP port + 1" role="button" tabindex="0" aria-expanded="false">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+    </svg>
+</span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Multicast IP Range</label>
+                            <input type="text" name="multicastIPRange" placeholder="224.1.0.0/16" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">IP range for multicast streams.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: 224.1.0.0/16" aria-label="More information: Default: 224.1.0.0/16" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -420,82 +474,60 @@
                 <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
                     <header class="mb-5">
                         <h3 class="text-lg font-semibold text-gray-900">WebRTC Settings</h3>
-                        <p class="mt-1 text-sm text-gray-500">ICE configuration and encryption for WebRTC/WHIP/WHEP.</p>
+                        <p class="mt-1 text-sm text-gray-500">ICE configuration, CORS, and TLS encryption for WebRTC/WHIP/WHEP.</p>
                     </header>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">ICE Host NAT 1:1</label>
-                            <input type="text" name="webrtcICEHostNAT1To1" placeholder="" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Public IP for 1:1 NAT mapping.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="External IP address when server is behind 1:1 NAT (e.g., AWS Elastic IP)" aria-label="More information: External IP address when server is behind 1:1 NAT (e.g., AWS Elastic IP)" role="button" tabindex="0" aria-expanded="false">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
+                            <select name="webrtcEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="false">false</option>
+                                <option value="true">true</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Enable TLS/HTTPS for WebRTC signaling.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="false = plain HTTP, true = HTTPS (requires webrtcServerKey and webrtcServerCert)" aria-label="More information: false = plain HTTP, true = HTTPS (requires webrtcServerKey and webrtcServerCert)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">ICE UDP Multicast Address</label>
-                            <input type="text" name="webrtcICEUDPMulticastAddress" placeholder="" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Multicast address for ICE candidates.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Multicast IP for gathering ICE candidates (e.g., 239.0.0.1)" aria-label="More information: Multicast IP for gathering ICE candidates (e.g., 239.0.0.1)" role="button" tabindex="0" aria-expanded="false">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Allow Origin</label>
+                            <input type="text" name="webrtcAllowOrigin" placeholder="*" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Value of Access-Control-Allow-Origin header.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: *" aria-label="More information: Default: *" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">ICE Port Range</label>
-                            <input type="text" name="webrtcICEPortRange" placeholder="50000-50100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">UDP port range for ICE.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Port range for ICE candidate gathering (format: start-end)" aria-label="More information: Port range for ICE candidate gathering (format: start-end)" role="button" tabindex="0" aria-expanded="false">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Local UDP Address</label>
+                            <input type="text" name="webrtcLocalUDPAddress" placeholder=":8189" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Local UDP listener for WebRTC media.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default :8189. Empty disables UDP ICE candidates" aria-label="More information: Default :8189. Empty disables UDP ICE candidates" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
 </span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Local TCP Address</label>
+                            <input type="text" name="webrtcLocalTCPAddress" placeholder="" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Local TCP listener for WebRTC media.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Optional TCP listener (e.g., :8189) for ICE-TCP candidates" aria-label="More information: Optional TCP listener (e.g., :8189) for ICE-TCP candidates" role="button" tabindex="0" aria-expanded="false">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+    </svg>
+</span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">IPs From Interfaces</label>
+                            <select name="webrtcIPsFromInterfaces" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="true">true</option>
+                                <option value="false">false</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Gather host ICE candidates from network interfaces.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Additional Hosts (comma-separated)</label>
                             <input type="text" name="webrtcAdditionalHosts" placeholder="" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Extra host IPs for ICE candidates.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Additional IP addresses to include as ICE host candidates (comma-separated)" aria-label="More information: Additional IP addresses to include as ICE host candidates (comma-separated)" role="button" tabindex="0" aria-expanded="false">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
-    </svg>
-</span></p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
-                            <select name="webrtcEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="no">no</option>
-                                <option value="yes">yes</option>
-                                <option value="mutual">mutual</option>
-                            </select>
-                            <p class="mt-1.5 text-xs text-gray-500">DTLS encryption mode.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="no = plain, yes = DTLS, mutual = DTLS with client cert verification" aria-label="More information: no = plain, yes = DTLS, mutual = DTLS with client cert verification" role="button" tabindex="0" aria-expanded="false">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
-    </svg>
-</span></p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- SRT Specific -->
-
-                <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
-                    <header class="mb-5">
-                        <h3 class="text-lg font-semibold text-gray-900">SRT Settings</h3>
-                        <p class="mt-1 text-sm text-gray-500">SRT protocol latency and bandwidth limits.</p>
-                    </header>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Latency</label>
-                            <input type="text" name="srtLatency" placeholder="100ms" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">SRT peer latency buffer.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Buffer time for packet retransmission (e.g., 100ms, 200ms, 1s). Higher = more resilience" aria-label="More information: Buffer time for packet retransmission (e.g., 100ms, 200ms, 1s). Higher = more resilience" role="button" tabindex="0" aria-expanded="false">
-    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
-    </svg>
-</span></p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Max Bandwidth</label>
-                            <input type="text" name="srtMaxBandwidth" placeholder="" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Max bandwidth in bytes/sec.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Maximum send bandwidth. Empty = unlimited. Format: 1000000 or 1MB/s" aria-label="More information: Maximum send bandwidth. Empty = unlimited. Format: 1000000 or 1MB/s" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Extra host IPs or domains for ICE candidates.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Additional IPs or hostnames to include as ICE host candidates (comma-separated)" aria-label="More information: Additional IPs or hostnames to include as ICE host candidates (comma-separated)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -509,17 +541,16 @@
                 <section class="mb-8 pb-8 border-b border-gray-100 last:border-0 last:pb-0">
                     <header class="mb-5">
                         <h3 class="text-lg font-semibold text-gray-900">HLS Settings</h3>
-                        <p class="mt-1 text-sm text-gray-500">HTTP Live Streaming segment and encryption options.</p>
+                        <p class="mt-1 text-sm text-gray-500">HTTP Live Streaming variant, segment, and encryption options.</p>
                     </header>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
                             <select name="hlsEncryption" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="no">no</option>
-                                <option value="yes">yes</option>
-                                <option value="mutual">mutual</option>
+                                <option value="false">false</option>
+                                <option value="true">true</option>
                             </select>
-                            <p class="mt-1.5 text-xs text-gray-500">TLS for HLS segments.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="no = plain HTTP, yes = HTTPS, mutual = HTTPS with client cert verification" aria-label="More information: no = plain HTTP, yes = HTTPS, mutual = HTTPS with client cert verification" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Enable TLS/HTTPS for HLS.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="false = plain HTTP, true = HTTPS (requires hlsServerKey and hlsServerCert)" aria-label="More information: false = plain HTTP, true = HTTPS (requires hlsServerKey and hlsServerCert)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -528,7 +559,20 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Allow Origin</label>
                             <input type="text" name="hlsAllowOrigin" placeholder="*" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">CORS header for HLS playback.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Access-Control-Allow-Origin value. * allows all, or specify origins comma-separated" aria-label="More information: Access-Control-Allow-Origin value. * allows all, or specify origins comma-separated" role="button" tabindex="0" aria-expanded="false">
+                            <p class="mt-1.5 text-xs text-gray-500">Value of Access-Control-Allow-Origin header.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: *" aria-label="More information: Default: *" role="button" tabindex="0" aria-expanded="false">
+    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
+    </svg>
+</span></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Variant</label>
+                            <select name="hlsVariant" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="lowLatency">lowLatency</option>
+                                <option value="fmp4">fmp4</option>
+                                <option value="mpegts">mpegts</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">HLS stream format variant.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="lowLatency = LL-HLS, fmp4 = fragmented MP4, mpegts = legacy MPEG-TS" aria-label="More information: lowLatency = LL-HLS, fmp4 = fragmented MP4, mpegts = legacy MPEG-TS" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -536,8 +580,8 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Segment Count</label>
-                            <input type="number" name="hlsSegmentCount" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Number of segments in playlist.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="How many .ts segments to keep in the manifest. Higher = more DVR window" aria-label="More information: How many .ts segments to keep in the manifest. Higher = more DVR window" role="button" tabindex="0" aria-expanded="false">
+                            <input type="number" name="hlsSegmentCount" min="1" placeholder="7" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Number of segments in playlist.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: 7. Number of HLS segments kept in manifest" aria-label="More information: Default: 7. Number of HLS segments kept in manifest" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -545,8 +589,8 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Segment Duration</label>
-                            <input type="text" name="hlsSegmentDuration" placeholder="5s" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Target segment length.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration of each .ts segment (e.g., 2s, 5s, 10s). Lower = lower latency" aria-label="More information: Duration of each .ts segment (e.g., 2s, 5s, 10s). Lower = lower latency" role="button" tabindex="0" aria-expanded="false">
+                            <input type="text" name="hlsSegmentDuration" placeholder="1s" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Minimum duration of each segment.<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: 1s (e.g., 1s, 2s, 5s)" aria-label="More information: Default: 1s (e.g., 1s, 2s, 5s)" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -554,8 +598,8 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Part Duration</label>
-                            <input type="text" name="hlsPartDuration" placeholder="" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="mt-1.5 text-xs text-gray-500">Partial segment duration (LL-HLS).<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Duration of partial segments for low-latency HLS. Empty = disabled. e.g., 200ms" aria-label="More information: Duration of partial segments for low-latency HLS. Empty = disabled. e.g., 200ms" role="button" tabindex="0" aria-expanded="false">
+                            <input type="text" name="hlsPartDuration" placeholder="200ms" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1.5 text-xs text-gray-500">Minimum duration of each part (LL-HLS).<span class="cursor-help ml-0.5 inline-flex align-middle text-gray-400" data-tooltip="Default: 200ms. Used when hlsVariant is lowLatency" aria-label="More information: Default: 200ms. Used when hlsVariant is lowLatency" role="button" tabindex="0" aria-expanded="false">
     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 8a1 1 0 1 1 2 0c0 .55-.25.79-.71 1.16-.58.46-1.29 1.04-1.29 2.34a1 1 0 1 0 2 0c0-.34.08-.48.54-.85C12.12 10.1 13 9.39 13 8a3 3 0 1 0-6 0 1 1 0 1 0 2 0Zm1 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"></path>
     </svg>
@@ -573,6 +617,7 @@
                 <h3 class="text-lg font-medium text-gray-900">Advanced (JSON Editor)</h3>
                 <button
                     id="config-global-save-json"
+                    type="button"
                     class="px-4 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 >
                     Save JSON
