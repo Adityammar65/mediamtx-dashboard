@@ -1,0 +1,7 @@
+services:
+  builder:
+    image: golang:alpine
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: go build -o mediamtx-agent main.go

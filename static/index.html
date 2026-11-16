@@ -278,18 +278,41 @@
             <div
                 class="p-4 border-t border-gray-200 sidebar-footer flex-shrink-0"
             >
-                <button
-                    id="logout-btn"
-                    type="button"
-                    class="flex w-full items-center justify-start gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    aria-label="Logout"
-                    title="Logout"
-                >
-                    <svg class="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                    </svg>
-                    <span class="sidebar-footer-label">Logout</span>
-                </button>
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <button
+                            id="logout-btn"
+                            type="button"
+                            class="flex w-full items-center justify-start gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                            aria-label="Logout"
+                            title="Logout"
+                        >
+                            <svg class="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                            </svg>
+                            <span class="sidebar-footer-label truncate">Logout</span>
+                        </button>
+                    </div>
+                    <div class="relative flex-shrink-0">
+                        <button
+                            id="service-menu-btn"
+                            type="button"
+                            class="p-2 rounded-lg text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                            aria-label="Service Menu"
+                            title="Service Menu"
+                        >
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </button>
+                        <div id="service-dropdown" class="hidden absolute bottom-full right-0 mb-2 w-32 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-50">
+                            <button class="service-action-btn w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors" data-action="start">Start Mediamtx</button>
+                            <button class="service-action-btn w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700 transition-colors" data-action="stop">Stop mediamtx</button>
+                            <button class="service-action-btn w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-amber-50 hover:text-amber-700 transition-colors" data-action="restart">Restart Mediamtx</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="mt-2 text-xs text-gray-500 text-center">
                     MediaMTX Dashboard v1.0
                 </div>
@@ -553,10 +576,17 @@
                                 <div class="rounded-lg border border-gray-200 p-4">
                                     <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
                                         <input type="radio" name="path_relay_mode" value="hooks" required class="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                        Hooks (runOnAvailable)
+                                        Hooks (runOnInit / runOnAvailable)
                                     </label>
                                     <div id="path-hooks-panel" class="hidden mt-4 border-t border-gray-100 pt-4">
-                                        <label for="path-run-on-available" class="block text-sm font-medium text-gray-700 mb-1">runOnAvailable command</label>
+                                        <label for="path-run-on-init" class="block text-sm font-medium text-gray-700 mb-1">runOnInit command</label>
+                                        <textarea id="path-run-on-init" name="run_on_init" rows="3" spellcheck="false" placeholder="/usr/bin/ffmpeg ..." class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                                        <p class="text-xs text-gray-500 mt-1">Menjalankan perintah saat path diinisialisasi. Fitur ini dapat digunakan untuk memublikasikan stream saat server dijalankan.</p>
+                                        <label class="mt-3 flex items-center text-sm text-gray-700">
+                                            <input type="checkbox" name="run_on_init_restart" class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                                            Restart command if it exits (runOnInitRestart)
+                                        </label>
+                                        <label for="path-run-on-available" class="mt-4 block text-sm font-medium text-gray-700 mb-1">runOnAvailable command</label>
                                         <textarea id="path-run-on-available" name="run_on_available" rows="3" spellcheck="false" placeholder="/usr/bin/ffmpeg ..." class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
                                         <p class="text-xs text-gray-500 mt-1">Command FFmpeg dapat menarik RTMP sumber langsung (A) atau membaca RTSP lokal MediaMTX (B).</p>
                                         <label class="mt-3 flex items-center text-sm text-gray-700">
