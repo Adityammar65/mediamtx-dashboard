@@ -566,6 +566,10 @@ class MediaMTXClient:
             data["fallback"] = kwargs["fallback"]
         if kwargs.get("source_redirect"):
             data["sourceRedirect"] = kwargs["source_redirect"]
+        if kwargs.get("run_on_init") is not None:
+            data["runOnInit"] = kwargs["run_on_init"]
+        if kwargs.get("run_on_init_restart") is not None:
+            data["runOnInitRestart"] = kwargs["run_on_init_restart"]
         if kwargs.get("run_on_available") is not None:
             data["runOnAvailable"] = kwargs["run_on_available"]
         if kwargs.get("run_on_available_restart") is not None:
@@ -598,6 +602,8 @@ class MediaMTXClient:
             "max_readers": "maxReaders",
             "fallback": "fallback",
             "source_redirect": "sourceRedirect",
+            "run_on_init": "runOnInit",
+            "run_on_init_restart": "runOnInitRestart",
             "run_on_available": "runOnAvailable",
             "run_on_available_restart": "runOnAvailableRestart",
             "forward": "forward",

@@ -553,10 +553,17 @@
                                 <div class="rounded-lg border border-gray-200 p-4">
                                     <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
                                         <input type="radio" name="path_relay_mode" value="hooks" required class="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                        Hooks (runOnAvailable)
+                                        Hooks (runOnInit / runOnAvailable)
                                     </label>
                                     <div id="path-hooks-panel" class="hidden mt-4 border-t border-gray-100 pt-4">
-                                        <label for="path-run-on-available" class="block text-sm font-medium text-gray-700 mb-1">runOnAvailable command</label>
+                                        <label for="path-run-on-init" class="block text-sm font-medium text-gray-700 mb-1">runOnInit command</label>
+                                        <textarea id="path-run-on-init" name="run_on_init" rows="3" spellcheck="false" placeholder="/usr/bin/ffmpeg ..." class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                                        <p class="text-xs text-gray-500 mt-1">Menjalankan perintah saat path diinisialisasi. Fitur ini dapat digunakan untuk memublikasikan stream saat server dijalankan.</p>
+                                        <label class="mt-3 flex items-center text-sm text-gray-700">
+                                            <input type="checkbox" name="run_on_init_restart" class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                                            Restart command if it exits (runOnInitRestart)
+                                        </label>
+                                        <label for="path-run-on-available" class="mt-4 block text-sm font-medium text-gray-700 mb-1">runOnAvailable command</label>
                                         <textarea id="path-run-on-available" name="run_on_available" rows="3" spellcheck="false" placeholder="/usr/bin/ffmpeg ..." class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
                                         <p class="text-xs text-gray-500 mt-1">Command FFmpeg dapat menarik RTMP sumber langsung (A) atau membaca RTSP lokal MediaMTX (B).</p>
                                         <label class="mt-3 flex items-center text-sm text-gray-700">

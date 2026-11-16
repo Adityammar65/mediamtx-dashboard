@@ -56,6 +56,8 @@ class PathCreateRequest(BaseModel):
     max_readers: Optional[int] = Field(default=None, alias="maxReaders")
     fallback: Optional[str] = None
     source_redirect: Optional[str] = Field(default=None, alias="sourceRedirect")
+    run_on_init: Optional[str] = Field(default=None, alias="runOnInit")
+    run_on_init_restart: bool = Field(default=False, alias="runOnInitRestart")
     run_on_available: Optional[str] = Field(default=None, alias="runOnAvailable")
     run_on_available_restart: bool = Field(default=False, alias="runOnAvailableRestart")
     forward: list[ForwardDestination] = Field(default_factory=list)
@@ -83,6 +85,8 @@ class PathPatchRequest(BaseModel):
     max_readers: Optional[int] = Field(default=None, alias="maxReaders")
     fallback: Optional[str] = None
     source_redirect: Optional[str] = Field(default=None, alias="sourceRedirect")
+    run_on_init: Optional[str] = Field(default=None, alias="runOnInit")
+    run_on_init_restart: Optional[bool] = Field(default=None, alias="runOnInitRestart")
     run_on_available: Optional[str] = Field(default=None, alias="runOnAvailable")
     run_on_available_restart: Optional[bool] = Field(default=None, alias="runOnAvailableRestart")
     forward: Optional[list[ForwardDestination]] = None

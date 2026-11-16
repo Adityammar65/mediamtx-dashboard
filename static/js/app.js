@@ -1755,14 +1755,19 @@ function setPathRelayMode(mode, hasConflict = false) {
 }
 
 function populatePathRelayFields(path) {
+    const runOnInit = path.runOnInit ?? path.run_on_init ?? '';
+    const initRestart = path.runOnInitRestart ?? path.run_on_init_restart ?? false;
     const runOnAvailable = path.runOnAvailable ?? path.run_on_available ?? '';
     const restart = path.runOnAvailableRestart ?? path.run_on_available_restart ?? false;
     const forward = Array.isArray(path.forward) ? path.forward : [];
+    document.getElementById('path-run-on-init').value = runOnInit;
+    document.querySelector('input[name="run_on_init_restart"]').checked = initRestart === true;
     document.getElementById('path-run-on-available').value = runOnAvailable;
     document.querySelector('input[name="run_on_available_restart"]').checked = restart === true;
     renderPathForwardDestinations(forward);
 
-    const hasHook = Boolean(runOnAvailable.trim()) || restart === true;
+    const hasHook = Boolean(runOnInit.trim()) || initRestart === true
+        || Boolean(runOnAvailable.trim()) || restart === true;
     const hasForward = forward.some((item) => typeof item?.dest === 'string' && item.dest.trim());
     if (hasHook && hasForward) {
         setPathRelayMode('', true);
@@ -1772,6 +1777,8 @@ function populatePathRelayFields(path) {
 }
 
 function resetPathRelayFields() {
+    document.getElementById('path-run-on-init').value = '';
+    document.querySelector('input[name="run_on_init_restart"]').checked = false;
     document.getElementById('path-run-on-available').value = '';
     document.querySelector('input[name="run_on_available_restart"]').checked = false;
     renderPathForwardDestinations([]);
@@ -2393,6 +2400,8 @@ form?.addEventListener('submit', async (e) => {
     };
 
     if (relayMode === 'hooks') {
+        payload.runOnInit = fd.get('run_on_init') || '';
+        payload.runOnInitRestart = fd.get('run_on_init_restart') === 'on';
         payload.runOnAvailable = fd.get('run_on_available') || '';
         payload.runOnAvailableRestart = fd.get('run_on_available_restart') === 'on';
         payload.forward = [];
