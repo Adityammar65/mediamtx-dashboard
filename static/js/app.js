@@ -368,6 +368,8 @@ function initSidebar() {
     const sidebarOverlay = document.getElementById('sidebar-overlay');
     const sidebarLogo = document.getElementById('sidebar-logo');
     const logoutButton = document.getElementById('logout-btn');
+    const serviceMenuBtn = document.getElementById('service-menu-btn');
+    const serviceDropdown = document.getElementById('service-dropdown');
 
 
     const savedCollapsed = localStorage.getItem('sidebarCollapsed');
@@ -385,6 +387,9 @@ function initSidebar() {
         mainContent.classList.toggle('sidebar-collapsed');
         sidebarLogo.textContent = sidebarCollapsed ? 'M' : 'MediaMTX Dashboard';
         localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+        if (sidebarCollapsed) {
+            serviceDropdown.classList.add('hidden');
+        }
     });
 
 
@@ -399,6 +404,7 @@ function initSidebar() {
         sidebar.classList.remove('mobile-open');
         sidebarOverlay.classList.add('hidden');
         document.body.style.overflow = '';
+        serviceDropdown.classList.add('hidden');
     });
 
 
@@ -411,6 +417,45 @@ function initSidebar() {
             }
         }
     });
+
+    // Service Menu logic
+    serviceMenuBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        serviceDropdown?.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (serviceMenuBtn && !serviceMenuBtn.contains(e.target)) {
+            serviceDropdown?.classList.add('hidden');
+        }
+    });
+
+    document.querySelectorAll('.service-action-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+            if (!confirm(`Are you sure you want to ${action} the MediaMTX service?`)) return;
+
+            serviceDropdown?.classList.add('hidden');
+            const originalText = btn.textContent;
+            btn.textContent = 'Processing...';
+            btn.disabled = true;
+
+            try {
+              const act = await fetchAPI(`/action/${action}`);
+              if (act.success) {
+                    alert(`Service ${action}ed successfully`);
+                } else {
+                    alert(`Error: ${act.message}`);
+                }
+            } catch (error) {
+                alert(`Failed to connect to service controller: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
+    });
+
 
     logoutButton.addEventListener('click', async () => {
         if (!confirm('Are you sure you want to log out?')) return;
@@ -3615,7 +3660,7 @@ async function loadRuntimeLogs() {
     try {
         const res = await fetchAPI('/logs?lines=500');
         if (res.success) {
-            allLogs = res.data.lines || [];
+            allLogs = res.data || [];
             logsCurrentPage = 1;
             renderLogs(allLogs);
         }
@@ -3709,21 +3754,6 @@ function changeLogsPage(delta) {
 let logsDeleteMode = null;
 let logsCustomStart = null;
 let logsCustomEnd = null;
-
-async function deleteLogs(params) {
-    try {
-        const res = await fetchAPI('/logs/delete', { method: 'POST', body: JSON.stringify(params) });
-        if (res.success) {
-            logsCurrentPage = 1;
-            await loadRuntimeLogs();
-            alert(`Successfully deleted ${res.data.deleted_count} log entr${res.data.deleted_count === 1 ? 'y' : 'ies'}.`);
-        } else {
-            alert('Failed to delete logs: ' + (res.message || 'Unknown error'));
-        }
-    } catch (e) {
-        alert('Failed to delete logs: ' + e.message);
-    }
-}
 
 function openDeleteDropdown() {
     const dropdown = document.getElementById('logs-delete-dropdown');

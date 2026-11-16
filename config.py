@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     LOG_FILE_PATH: str = os.environ.get("LOG_FILE_PATH", "/var/log/mediamtx.log")
     NODE_EXPORTER_URL: str = os.environ.get("NODE_EXPORTER_URL", "http://127.0.0.1:9100")
     MEDIAMTX_CONFIG_PATH: str = os.environ.get("MEDIAMTX_CONFIG_PATH", "mediamtx.yml")
+    MEDIAMTX_AGENT_URL: str = os.environ.get("MEDIAMTX_AGENT_URL", "http://mediamtx:8081")
 
     # --- JWT Authentication ---
 

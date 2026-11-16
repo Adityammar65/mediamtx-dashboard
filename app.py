@@ -3,9 +3,8 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Requ
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-import os
+import re
 import asyncio
-import secrets
 from datetime import datetime, timedelta
 import jwt
 import httpx
@@ -17,93 +16,12 @@ from responses import StandardResponse
 from schemas import PathCreateRequest, PathPatchRequest
 from system_monitor import get_system_monitor
 
-
-def read_log_file(path: str, lines: int = 100):
-    """Read the last N lines from a log file."""
-    try:
-        if not os.path.exists(path):
-            return {"lines": [], "error": f"Log file not found: {path}"}
-
-        with open(path, 'r') as f:
-            all_lines = f.readlines()
-
-        last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-
-        parsed_lines = []
-        for line in last_lines:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-
-                import json
-                log_entry = json.loads(line)
-
-                raw_ts = log_entry.get("timestamp", log_entry.get("time", ""))
-                formatted_ts = raw_ts
-                if raw_ts:
-                    try:
-                        from datetime import datetime
-
-                        dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
-                        formatted_ts = dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        pass
-
-                parsed_lines.append({
-                    "timestamp": formatted_ts,
-                    "level": log_entry.get("level", ""),
-                    "message": log_entry.get("message", log_entry.get("msg", ""))
-                })
-            except json.JSONDecodeError:
-
-                parsed_lines.append({
-                    "timestamp": "",
-                    "level": "",
-                    "message": line
-                })
-
-        return {"lines": parsed_lines, "error": None}
-    except Exception as e:
-        return {"lines": [], "error": str(e)}
-
-
-async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
-    """Background task untuk membersihkan file log jika sudah terlalu besar atau terlalu banyak baris."an."""
-    log_path = settings.LOG_FILE_PATH
-    while True:
-        try:
-            if os.path.exists(log_path):
-
-                file_size_mb = os.path.getsize(log_path) / (1024 * 1024)
-                with open(log_path, 'r') as f:
-                    lines = f.readlines()
-
-                if file_size_mb > max_size_mb or len(lines) > max_lines:
-
-                    keep_lines = lines[-2000:]
-                    with open(log_path, 'w') as f:
-                        f.writelines(keep_lines)
-                    print(f"[Info] Log dibersihkan. Ukuran sebelumnya: {file_size_mb:.2f}MB, baris: {len(lines)}")
-        except Exception as e:
-            print(f"[Warning] Gagal membersihkan log: {e}")
-
-
-        await asyncio.sleep(6 * 3600)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = get_mediamtx_client()
-    try:
-        await client.merge_server_internal_users()
-    except Exception as exc:
-        print(f"[Warning] Failed to capture MediaMTX internal users: {exc}")
     health_task = asyncio.create_task(client._cekMediamtxHealth())
-    clean_task = asyncio.create_task(clean_old_logs())
     yield
     health_task.cancel()
-    clean_task.cancel()
     MediaMTXClient.force_flush_sync()
     MediaMTXClient.force_flush_internal_users_sync()
     client = get_mediamtx_client()
@@ -147,6 +65,40 @@ def is_api_path(path: str) -> bool:
     """Check if path is an API path that requires authentication."""
     return path.startswith("/api/") and not path.startswith("/api/login")
 
+def clean_journalctl_log(raw: str):
+    parsed_logs = []
+    systemd_line_pattern = re.compile(r'^([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+[^:]+:\s+(.*)$')
+    go_log_pattern = re.compile(r'^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+(.*)$')
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+
+        sys_match = systemd_line_pattern.match(line)
+        if sys_match:
+            sys_timestamp, inner_content = sys_match.groups()
+
+            go_match = go_log_pattern.match(inner_content)
+            if go_match:
+                ts, level, msg = go_match.groups()
+                parsed_logs.append({
+                    "timestamp": ts,
+                    "level": level,
+                    "message": msg
+                })
+            else:
+                parsed_logs.append({
+                    "timestamp": sys_timestamp,
+                    "level": "INF",
+                    "message": inner_content
+                })
+        else:
+            parsed_logs.append({
+                "timestamp": "-",
+                "level": "INF",
+                "message": line.strip()
+            })
+
+    return parsed_logs
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -509,166 +461,61 @@ async def get_system_metrics():
 
 @app.get("/api/logs")
 async def read_logs(
-    lines: int = Query(100, ge=1, le=5000)
+    lines: int = Query(10, ge=1, le=5000)
 ):
-    data = read_log_file(settings.LOG_FILE_PATH, lines)
-    return StandardResponse.success(data, "Logs retrieved")
+    base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
+    target_url = f"{base}/logs?lines={lines}"
 
-
-
-LOG_SAFETY_CUTOFF_SECONDS = 48 * 60 * 60
-
-
-def parse_log_timestamp(line):
-    """Parse timestamp from a log line. Returns datetime or None if unparseable."""
     try:
-        import json
-        log_entry = json.loads(line.strip())
-        raw_ts = log_entry.get("timestamp", log_entry.get("time", ""))
-        if raw_ts:
-            from datetime import datetime
+        async with httpx.AsyncClient() as client:
+            response = await client.get(target_url, timeout=10.0)
+            if response.status_code != 200:
+                return JSONResponse(
+                    status_code=response.status_code,
+                    content={"success": False, "message": "Gagal mengambil log dari Agent"}
+                )
+            data = response.json()
+            agent_data= data.get("logs", "")
+            cleaned_data = clean_journalctl_log(agent_data)
 
-            return datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
-    except Exception:
-        pass
-    return None
+            return StandardResponse.success(cleaned_data, "Logs retrieved")
 
+    except httpx.RequestError as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Gagal terhubung ke MediaMTX Agent: {str(e)}"}
+        )
 
-def is_within_safety_window(timestamp):
-    """Check if a timestamp is within the 48-hour safety window."""
-    if timestamp is None:
-        return True
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    age = (now - timestamp).total_seconds()
-    return age < LOG_SAFETY_CUTOFF_SECONDS
-
-
-def should_delete_entry(timestamp, start=None, end=None):
-    """Determine if a log entry should be deleted based on timestamp and optional range."""
-    if timestamp is None:
-        return False
-
-    if is_within_safety_window(timestamp):
-        return False
-
-    if start is not None and timestamp < start:
-        return False
-    if end is not None and timestamp > end:
-        return False
-    return True
-
-
-def filter_log_lines(lines, preset=None, start=None, end=None):
-    """Filter log lines, returning (kept_lines, deleted_count).
-
-    Presets:
-    - 'week': delete entries from 7 days ago up to 48 hours ago
-    - 'month': delete entries from 30 days ago up to 48 hours ago
-    - None with start/end: custom range
-    """
-    from datetime import datetime, timezone, timedelta
-    now = datetime.now(timezone.utc)
-
-    if preset == 'week':
-        start = now - timedelta(days=7)
-        end = now - timedelta(seconds=LOG_SAFETY_CUTOFF_SECONDS)
-    elif preset == 'month':
-        start = now - timedelta(days=30)
-        end = now - timedelta(seconds=LOG_SAFETY_CUTOFF_SECONDS)
-
-    kept = []
-    deleted = 0
-    for line in lines:
-        ts = parse_log_timestamp(line)
-        if should_delete_entry(ts, start, end):
-            deleted += 1
-        else:
-            kept.append(line)
-    return kept, deleted
-
-
-@app.post("/api/logs/delete")
-async def delete_logs(
-    payload: dict = Body(...)
-):
-    """Delete log entries based on preset or custom range, respecting 48-hour safety cutoff."""
-    log_path = settings.LOG_FILE_PATH
+# -- Agent Routes --
+@app.get("/api/action/{q}")
+async def service(q: str):
+    if q not in ["start", "stop", "restart"]:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "Invalid action"}
+        )
+    base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
+    target_url = f"{base}/service?action={q}"
     try:
-        if not os.path.exists(log_path):
-            return StandardResponse.error(f"Log file not found: {log_path}")
-
-        with open(log_path, 'r') as f:
-            lines = f.readlines()
-
-        preset = payload.get('preset')
-        start_str = payload.get('start')
-        end_str = payload.get('end')
-
-        start = None
-        end = None
-        if start_str:
-            from datetime import datetime
-            start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-        if end_str:
-            from datetime import datetime
-            end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-
-        kept_lines, deleted_count = filter_log_lines(lines, preset, start, end)
-
-        with open(log_path, 'w') as f:
-            f.writelines(kept_lines)
-
-        return StandardResponse.success({"deleted_count": deleted_count}, f"Deleted {deleted_count} log entries")
-    except Exception as e:
-        return StandardResponse.error(f"Failed to delete log entries: {str(e)}")
-
-
-@app.post("/api/logs/clear")
-async def clear_logs():
-    """Truncate the configured log file in place (legacy endpoint)."""
-    log_path = settings.LOG_FILE_PATH
-    try:
-        if not os.path.exists(log_path):
-            return StandardResponse.error(f"Log file not found: {log_path}")
-
-        with open(log_path, 'w') as f:
-            pass
-        return StandardResponse.success(None, "Log file cleared successfully")
-    except Exception as e:
-        return StandardResponse.error(f"Failed to clear log file: {str(e)}")
-
-
-async def clean_old_logs(max_size_mb: int = 5, max_lines: int = 5000):
-    """Background task to clean log file if too large, respecting 48-hour safety cutoff."""
-    log_path = settings.LOG_FILE_PATH
-    while True:
-        try:
-            if os.path.exists(log_path):
-                file_size_mb = os.path.getsize(log_path) / (1024 * 1024)
-                with open(log_path, 'r') as f:
-                    lines = f.readlines()
-
-                if file_size_mb > max_size_mb or len(lines) > max_lines:
-
-                    kept_lines, deleted_count = filter_log_lines(lines)
-
-
-
-                    if len(kept_lines) > max_lines:
-
-
-
-                        kept_lines = kept_lines[-max_lines:]
-                        deleted_count = len(lines) - len(kept_lines)
-
-                    with open(log_path, 'w') as f:
-                        f.writelines(kept_lines)
-                    print(f"[Info] Log cleaned up. Size before: {file_size_mb:.2f}MB, lines before: {len(lines)}, deleted: {deleted_count}")
-        except Exception as e:
-            print(f"[Warning] Failed to clean log: {e}")
-
-        await asyncio.sleep(6 * 3600)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(target_url, timeout=10.0)
+            agent_data = response.json()
+            return JSONResponse(
+                status_code=response.status_code,
+                content={
+                    "success": response.status_code == 200,
+                    "message": agent_data.get("message", "Berhasil mengeksekusi perintah."),
+                    "data": agent_data.get("data", "")
+                }
+            )
+    except httpx.RequestError as e:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": f"Gagal terhubung ke MediaMTX Agent: {str(e)}"
+                }
+            )
 
 # --- FRONTEND ---
 

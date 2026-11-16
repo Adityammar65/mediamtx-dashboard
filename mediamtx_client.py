@@ -300,18 +300,25 @@ class MediaMTXClient:
                     "started": started,
                 })
 
-                if started and (
-                    not MediaMTXClient._has_reconciled_internal_users
-                    or started != MediaMTXClient._last_restore_started
-                ):
-                    try:
-                        await self.merge_server_internal_users()
-                        await self._restore_after_restart()
-                    except Exception as exc:
-                        print(f"[Error] MediaMTX reconciliation failed; retrying next poll: {exc}", flush=True)
-                    else:
+                uptime = self._parse_started_to_seconds(started)
+                is_first_sync = not MediaMTXClient._has_reconciled_internal_users
+                mtx_restarted = started != MediaMTXClient._last_restore_started
+
+                if started and (is_first_sync or mtx_restarted):
+                    if is_first_sync and uptime >= 5:
+                        # Dashboard restart, tapi MediaMTX sudah stabil (> 5s).
+                        # Lewati restorasi untuk menghindari penimpaan konfigurasi yang sudah ada.
                         MediaMTXClient._last_restore_started = started
                         MediaMTXClient._has_reconciled_internal_users = True
+                    else:
+                        try:
+                            await self.merge_server_internal_users()
+                            await self._restore_after_restart()
+                        except Exception as exc:
+                            print(f"[Error] MediaMTX reconciliation failed; retrying next poll: {exc}", flush=True)
+                        else:
+                            MediaMTXClient._last_restore_started = started
+                            MediaMTXClient._has_reconciled_internal_users = True
 
             except Exception as exc:
                 MediaMTXClient._info.clear()
