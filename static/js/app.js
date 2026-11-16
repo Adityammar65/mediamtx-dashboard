@@ -3660,7 +3660,7 @@ async function loadRuntimeLogs() {
     try {
         const res = await fetchAPI('/logs?lines=500');
         if (res.success) {
-            allLogs = res.data.lines || [];
+            allLogs = res.data || [];
             logsCurrentPage = 1;
             renderLogs(allLogs);
         }
@@ -3754,21 +3754,6 @@ function changeLogsPage(delta) {
 let logsDeleteMode = null;
 let logsCustomStart = null;
 let logsCustomEnd = null;
-
-async function deleteLogs(params) {
-    try {
-        const res = await fetchAPI('/logs/delete', { method: 'POST', body: JSON.stringify(params) });
-        if (res.success) {
-            logsCurrentPage = 1;
-            await loadRuntimeLogs();
-            alert(`Successfully deleted ${res.data.deleted_count} log entr${res.data.deleted_count === 1 ? 'y' : 'ies'}.`);
-        } else {
-            alert('Failed to delete logs: ' + (res.message || 'Unknown error'));
-        }
-    } catch (e) {
-        alert('Failed to delete logs: ' + e.message);
-    }
-}
 
 function openDeleteDropdown() {
     const dropdown = document.getElementById('logs-delete-dropdown');

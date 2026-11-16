@@ -3,9 +3,8 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Requ
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-import os
+import re
 import asyncio
-import secrets
 from datetime import datetime, timedelta
 import jwt
 import httpx
@@ -20,10 +19,6 @@ from system_monitor import get_system_monitor
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = get_mediamtx_client()
-    try:
-        await client.merge_server_internal_users()
-    except Exception as exc:
-        print(f"[Warning] Failed to sync MediaMTX internal users: {exc}")
     health_task = asyncio.create_task(client._cekMediamtxHealth())
     yield
     health_task.cancel()
@@ -70,6 +65,40 @@ def is_api_path(path: str) -> bool:
     """Check if path is an API path that requires authentication."""
     return path.startswith("/api/") and not path.startswith("/api/login")
 
+def clean_journalctl_log(raw: str):
+    parsed_logs = []
+    systemd_line_pattern = re.compile(r'^([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+[^:]+:\s+(.*)$')
+    go_log_pattern = re.compile(r'^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+(.*)$')
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+
+        sys_match = systemd_line_pattern.match(line)
+        if sys_match:
+            sys_timestamp, inner_content = sys_match.groups()
+
+            go_match = go_log_pattern.match(inner_content)
+            if go_match:
+                ts, level, msg = go_match.groups()
+                parsed_logs.append({
+                    "timestamp": ts,
+                    "level": level,
+                    "message": msg
+                })
+            else:
+                parsed_logs.append({
+                    "timestamp": sys_timestamp,
+                    "level": "INF",
+                    "message": inner_content
+                })
+        else:
+            parsed_logs.append({
+                "timestamp": "-",
+                "level": "INF",
+                "message": line.strip()
+            })
+
+    return parsed_logs
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -432,7 +461,7 @@ async def get_system_metrics():
 
 @app.get("/api/logs")
 async def read_logs(
-    lines: int = Query(100, ge=1, le=5000)
+    lines: int = Query(10, ge=1, le=5000)
 ):
     base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
     target_url = f"{base}/logs?lines={lines}"
@@ -445,8 +474,11 @@ async def read_logs(
                     status_code=response.status_code,
                     content={"success": False, "message": "Gagal mengambil log dari Agent"}
                 )
-            agent_data = response.json()
-            return StandardResponse.success(agent_data.get("logs", ""), "Logs retrieved")
+            data = response.json()
+            agent_data= data.get("logs", "")
+            cleaned_data = clean_journalctl_log(agent_data)
+
+            return StandardResponse.success(cleaned_data, "Logs retrieved")
 
     except httpx.RequestError as e:
         return JSONResponse(
