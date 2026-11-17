@@ -436,19 +436,25 @@ function initSidebar() {
             if (!confirm(`Are you sure you want to ${action} the MediaMTX service?`)) return;
 
             serviceDropdown?.classList.add('hidden');
+            const password = await requestServicePassword();
+            if (password === null) return;
+
             const originalText = btn.textContent;
             btn.textContent = 'Processing...';
             btn.disabled = true;
 
             try {
-              const act = await fetchAPI(`/action/${action}`);
+              const act = await fetchAPI(`/action/${action}`, {
+                  method: 'POST',
+                  body: JSON.stringify({ password }),
+              });
               if (act.success) {
                     alert(`Service ${action}ed successfully`);
                 } else {
                     alert(`Error: ${act.message}`);
                 }
             } catch (error) {
-                alert(`Failed to connect to service controller: ${error.message}`);
+                alert(error.status ? `Error: ${error.message}` : `Failed to connect to service controller: ${error.message}`);
             } finally {
                 btn.textContent = originalText;
                 btn.disabled = false;
@@ -469,6 +475,42 @@ function initSidebar() {
             logoutButton.disabled = false;
             alert(`Unable to log out: ${error.message}`);
         }
+    });
+}
+
+function requestServicePassword() {
+    const modal = document.getElementById('service-password-modal');
+    const form = document.getElementById('service-password-form');
+    const input = document.getElementById('service-password-input');
+    const cancelButton = document.getElementById('service-password-cancel');
+
+    return new Promise(resolve => {
+        const close = password => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            input.value = '';
+            form.removeEventListener('submit', onSubmit);
+            cancelButton.removeEventListener('click', onCancel);
+            document.removeEventListener('keydown', onKeydown);
+            resolve(password);
+        };
+        const onSubmit = event => {
+            event.preventDefault();
+            close(input.value);
+        };
+        const onCancel = () => close(null);
+        const onKeydown = event => {
+            if (event.key === 'Escape') {
+                close(null);
+            }
+        };
+
+        form.addEventListener('submit', onSubmit);
+        cancelButton.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKeydown);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        input.focus();
     });
 }
 
