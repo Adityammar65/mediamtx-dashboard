@@ -1,12 +1,9 @@
-from statistics import median
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote
 import asyncio
 import json
-import time
 from collections import deque
 from pathlib import Path
 from typing import Optional
-import re
 from datetime import datetime, timezone
 
 import httpx
@@ -40,9 +37,6 @@ _PROTOCOL_READER_KEYS = (
 )
 
 
-def _mask_sensitive_url(value):
-    return value
-
 def _mask_path_config(config):
     return config
 
@@ -66,7 +60,7 @@ class MediaMTXClient:
     _is_internal_users_dirty = False
     _yaml_save_task = None
     _json_save_task = None
-    _save_debounce_seconds = 5
+    _save_debounce_seconds = 300
 
     @classmethod
     def get_instance(cls):
