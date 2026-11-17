@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime, timedelta
 import jwt
 import httpx
+import secrets
 
 from config import settings
 from deps import get_mediamtx_client
