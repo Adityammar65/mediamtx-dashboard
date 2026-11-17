@@ -487,13 +487,21 @@ async def read_logs(
         )
 
 # -- Agent Routes --
-@app.get("/api/action/{q}")
-async def service(q: str):
+@app.post("/api/action/{q}")
+async def service(q: str, password: str = Body(..., embed=True)):
     if q not in ["start", "stop", "restart"]:
         return JSONResponse(
             status_code=400,
             content={"success": False, "message": "Invalid action"}
         )
+    if not secrets.compare_digest(
+        password.encode("utf-8"), settings.AUTH_PASSWORD.encode("utf-8")
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Invalid password"}
+        )
+
     base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
     target_url = f"{base}/service?action={q}"
     try:
