@@ -773,18 +773,6 @@ function bindPageEvents(page) {
             renderLogs(allLogs);
         });
         document.getElementById('logs-refresh')?.addEventListener('click', loadRuntimeLogs);
-        document.getElementById('logs-delete-btn')?.addEventListener('click', openDeleteDropdown);
-        document.querySelectorAll('#logs-delete-dropdown [data-delete-preset]')?.forEach(btn => {
-            btn.addEventListener('click', () => handleDeletePreset(btn.dataset.deletePreset));
-        });
-        document.getElementById('logs-custom-modal-close')?.addEventListener('click', closeCustomPeriodModal);
-        document.getElementById('logs-custom-modal-cancel')?.addEventListener('click', closeCustomPeriodModal);
-        document.getElementById('logs-custom-modal-confirm')?.addEventListener('click', confirmCustomPeriodDelete);
-
-        document.addEventListener('click', (e) => {
-            const menu = document.getElementById('logs-delete-menu');
-            if (menu && !menu.contains(e.target)) closeDeleteDropdown();
-        });
     }
     if (page === 'config-paths') {
         document.getElementById('config-paths-add-btn')?.addEventListener('click', () => openConfigPathModal());
@@ -3654,7 +3642,7 @@ async function loadRuntimeRTMP() {
 
 let allLogs = [];
 let logsCurrentPage = 1;
-const LOGS_PER_PAGE = 10;
+const LOGS_PER_PAGE = 40;
 
 async function loadRuntimeLogs() {
     try {
@@ -3749,79 +3737,6 @@ function changeLogsPage(delta) {
         logsCurrentPage = newPage;
         renderLogs(allLogs);
     }
-}
-
-let logsDeleteMode = null;
-let logsCustomStart = null;
-let logsCustomEnd = null;
-
-function openDeleteDropdown() {
-    const dropdown = document.getElementById('logs-delete-dropdown');
-    dropdown.classList.toggle('hidden');
-}
-
-function closeDeleteDropdown() {
-    const dropdown = document.getElementById('logs-delete-dropdown');
-    dropdown.classList.add('hidden');
-}
-
-function handleDeletePreset(preset) {
-    closeDeleteDropdown();
-    if (preset === 'custom') {
-        openCustomPeriodModal();
-    } else {
-        const confirmMsg = preset === 'week'
-            ? 'Delete all log entries from the last week (excluding the most recent 48 hours)?'
-            : 'Delete all log entries from the last month (excluding the most recent 48 hours)?';
-        if (confirm(confirmMsg + ' This action cannot be undone.')) {
-            deleteLogs({ preset });
-        }
-    }
-}
-
-function openCustomPeriodModal() {
-    const modal = document.getElementById('logs-custom-modal');
-    modal.classList.remove('hidden');
-
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    const endInput = document.getElementById('logs-custom-end');
-    endInput.value = formatDatetimeLocal(cutoff);
-
-    const startDefault = new Date(cutoff.getTime() - 7 * 24 * 60 * 60 * 1000);
-    document.getElementById('logs-custom-start').value = formatDatetimeLocal(startDefault);
-}
-
-function closeCustomPeriodModal() {
-    const modal = document.getElementById('logs-custom-modal');
-    modal.classList.add('hidden');
-}
-
-function formatDatetimeLocal(date) {
-    const pad = (n) => n.toString().padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-async function confirmCustomPeriodDelete() {
-    const startStr = document.getElementById('logs-custom-start').value;
-    const endStr = document.getElementById('logs-custom-end').value;
-    if (!startStr || !endStr) {
-        alert('Please select both start and end date/time.');
-        return;
-    }
-    const start = new Date(startStr);
-    const end = new Date(endStr);
-    if (start > end) {
-        alert('Start date/time must be before or equal to end date/time.');
-        return;
-    }
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    if (end > cutoff) {
-        if (!confirm(`The selected end time is within the 48-hour protection window. Only entries older than 48 hours will be deleted. Continue?`)) {
-            return;
-        }
-    }
-    closeCustomPeriodModal();
-    deleteLogs({ start: start.toISOString(), end: end.toISOString() });
 }
 
 // --- Auto Refresh ---

@@ -26,16 +26,10 @@ func controlService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// queryCmd := map[string]string{
-	// 	"stop":"sudo systemctl stop mediamtx && killall -9 ffmpeg 2>/dev/null",
-	// 	"start":"sudo systemctl start mediamtx && sleep 6",
-	// 	"restart":"sudo systemctl stop mediamtx && killall -9 ffmpeg 2>/dev/null; sudo systemctl start mediamtx && sleep 6",
-	// }
-
 	queryCmd := map[string]string{
-		"stop":"sudo systemctl status mediamtx",
-		"start":"sudo systemctl status mediamtx",
-		"restart":"sudo systemctl status mediamtx",
+		"stop":"sudo systemctl stop mediamtx && killall -9 ffmpeg 2>/dev/null",
+		"start":"sudo systemctl start mediamtx && sleep 6",
+		"restart":"sudo systemctl stop mediamtx && killall -9 ffmpeg 2>/dev/null; sudo systemctl start mediamtx && sleep 6",
 	}
 
 	cmd := exec.Command("sh", "-c", queryCmd[action])
