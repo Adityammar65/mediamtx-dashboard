@@ -10,7 +10,32 @@ import jwt
 import httpx
 import secrets
 import json
+import logging
+from collections import deque
 from urllib.parse import urlencode
+
+
+class DashboardLogHandler(logging.Handler):
+    def __init__(self, max_entries=5000):
+        super().__init__()
+        self.records = deque(maxlen=max_entries)
+
+    def emit(self, record):
+        self.records.append({
+            "timestamp": self.formatter.formatTime(record),
+            "level": record.levelname,
+            "message": record.getMessage()
+        })
+
+
+dashboard_log_handler = DashboardLogHandler()
+dashboard_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+dashboard_log_handler.setLevel(logging.INFO)
+
+# Attach to loggers that produce dashboard logs
+for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
+    logging.getLogger(name).addHandler(dashboard_log_handler)
+    logging.getLogger(name).setLevel(logging.INFO)
 
 from config import settings
 from deps import get_mediamtx_client
@@ -498,10 +523,18 @@ async def get_system_metrics():
 
 @app.get("/api/logs")
 async def read_logs(
+    source: str = Query("mediamtx", regex="^(mediamtx|dashboard)$"),
     lines: int = Query(10, ge=1, le=5000),
     date: str = Query(None),
     level: list[str] = Query(default=[]),
 ):
+    if source == "dashboard":
+        cleaned_data = list(dashboard_log_handler.records)[-lines:]
+        if level:
+            allowed = {item.upper() for item in level}
+            cleaned_data = [log for log in cleaned_data if log["level"].upper() in allowed]
+        return StandardResponse.success(cleaned_data, "Dashboard logs retrieved")
+
     if date:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
             raise HTTPException(status_code=400, detail="Format tanggal harus YYYY-MM-DD")
@@ -525,7 +558,7 @@ async def read_logs(
                     content={"success": False, "message": "Gagal mengambil log dari Agent"}
                 )
             data = response.json()
-            agent_data= data.get("logs", "")
+            agent_data = data.get("logs", "")
             cleaned_data = clean_journalctl_log(agent_data)
             if level:
                 allowed_levels = {item.upper() for item in level}
