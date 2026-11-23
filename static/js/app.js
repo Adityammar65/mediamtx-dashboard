@@ -2609,6 +2609,11 @@ form?.addEventListener('submit', async (e) => {
     const fallback = fd.get('fallback');
     if (fallback) payload.fallback = fallback;
 
+    const submitBtn = document.getElementById('path-submit-btn');
+    submitBtn.disabled = true;
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = 'Processing...';
+
     try {
         const isEditing = editingPathName || editingConfigPathName;
         const editingName = editingPathName || editingConfigPathName;
@@ -2654,6 +2659,9 @@ form?.addEventListener('submit', async (e) => {
         showError(e.message);
         const isEditing = editingPathName || editingConfigPathName;
         alert(`Failed to ${isEditing ? 'update' : 'add'} path: ${e.message}`);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
     }
 });
 
@@ -3845,7 +3853,10 @@ function renderLogs(logs) {
     const searchTerm = document.getElementById('logs-search')?.value.toLowerCase() || '';
     const levelFilter = document.getElementById('logs-level-filter')?.value || '';
 
-    const filtered = logs.filter(log => {
+    // Balik urutan agar yang terbaru di atas
+    const reversedLogs = [...logs].reverse();
+
+    const filtered = reversedLogs.filter(log => {
         const message = (log.message || '').toLowerCase();
         const level = (log.level || '').toUpperCase();
         const matchesSearch = !searchTerm || message.includes(searchTerm);
@@ -3871,16 +3882,16 @@ function renderLogs(logs) {
     tbody.innerHTML = pageLogs.map(log => {
         const level = (log.level || '').toUpperCase();
         let levelClass = 'text-gray-600';
-        if (level === 'ERR') levelClass = 'text-red-600';
-        else if (level === 'WAR') levelClass = 'text-yellow-600';
-        else if (level === 'INF') levelClass = 'text-blue-600';
+        if (level === 'ERR' || level === 'ERROR') levelClass = 'text-red-600';
+        else if (level === 'WAR' || level === 'WARNING' || level === 'WARN') levelClass = 'text-yellow-600';
+        else if (level === 'INF' || level === 'INFO') levelClass = 'text-blue-600';
         else if (level === 'DEBUG') levelClass = 'text-gray-500';
 
         return `
             <tr class="hover:bg-gray-50">
-                <td class="px-6 py-3 text-gray-500 whitespace-nowrap">${escapeHtml(log.timestamp || '-')}</td>
-                <td class="px-6 py-3"><span class="font-medium ${levelClass}">${escapeHtml(level)}</span></td>
-                <td class="px-6 py-3 text-gray-900 max-w-2xl truncate block">${escapeHtml(log.message || '-')}</td>
+                <td class="px-6 py-2 text-gray-500 whitespace-nowrap text-xs font-mono">${escapeHtml(log.timestamp || '-')}</td>
+                <td class="px-6 py-2"><span class="font-medium ${levelClass} text-xs uppercase">${escapeHtml(level)}</span></td>
+                <td class="px-6 py-2 text-gray-900 font-mono text-xs whitespace-pre-wrap">${escapeHtml(log.message || '-')}</td>
             </tr>
         `;
     }).join('');

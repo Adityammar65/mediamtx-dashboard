@@ -1,3 +1,5 @@
-*.yml
-mediamtx-agent
-*.exe
+*
+!.gitignore
+!Dockerfile
+!docker-compose.yaml
+!main.go

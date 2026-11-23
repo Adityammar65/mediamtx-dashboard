@@ -1,9 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"log"
+	"strings"
 	"encoding/json"
 	"net/http"
 	"os/exec"
+	"os"
+	"fmt"
 	"time"
 )
 
@@ -11,6 +17,28 @@ type Response struct {
 	Status string `json:"status"`
 	Message string `json:"message"`
 	Data string `json:"data"`
+}
+
+var ignoredInfPatterns = []string{
+	"frame=",
+	"built with gcc",
+	"--",
+	"ffmpeg",
+	"libav",
+	"libsw",
+	"libpostproc",
+	"speed=",
+}
+
+type AgentLogPayload struct {
+	Timestamp string `json:"timestamp,omitempty"`
+	Level     string `json:"level,omitempty"`
+	Message   string `json:"message"`
+	Source    string `json:"source,omitempty"`
+}
+
+var dashboardHTTPClient = &http.Client{
+	Timeout: 5 * time.Second,
 }
 
 func controlService(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +112,126 @@ func logService(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"logs": string(output)})
 }
 
+func isIgnoredInfLine(line string) bool {
+	lower := strings.ToLower(line)
+	for _, pat := range ignoredInfPatterns {
+		if strings.Contains(lower, strings.ToLower(pat)) {
+			return true
+		}
+	}
+	return false
+}
+
+func sendLogToDashboard(payload AgentLogPayload) error {
+	log.Printf("DEBUG: Sending log: %s", payload.Message)
+	if payload.Source == "" {
+		payload.Source = "mediamtx"
+	}
+	if payload.Timestamp == "" {
+		payload.Timestamp = time.Now().Format(time.RFC3339Nano)
+	}
+
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload error: %w", err)
+	}
+
+	url := "http://172.16.18.210:8000/api/logs/agent-events"
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("create request error: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if token := os.Getenv("AGENT_LOG_TOKEN"); token != "" {
+		req.Header.Set("X-Agent-Token", token)
+	}
+
+	resp, err := dashboardHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("http post error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+var agentLogQueue = make(chan AgentLogPayload, 200)
+
+func startDashboardLogWorker() {
+	go func() {
+		for item := range agentLogQueue {
+			if err := sendLogToDashboard(item); err != nil {
+				log.Printf("failed to send log to dashboard: %v | msg=%s", err, item.Message)
+			}
+		}
+	}()
+}
+
+func handleImportantInfLog(line string) {
+	payload := AgentLogPayload{
+		Timestamp: time.Now().Format(time.RFC3339Nano),
+		Level:     "INF",
+		Message:   line,
+		Source:    "mediamtx",
+	}
+
+	select {
+	case agentLogQueue <- payload:
+	default:
+		log.Printf("agentLogQueue full, dropping log: %s", line)
+	}
+}
+
+func followJournalctlINF(unit string) {
+	for {
+		cmd := exec.Command("journalctl", "-u", unit, "-f", "--no-pager", "-o", "short")
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Printf("journalctl StdoutPipe error: %v", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		if err := cmd.Start(); err != nil {
+			log.Printf("journalctl start error: %v", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+
+			if strings.Contains(line, "INF") && !isIgnoredInfLine(line) {
+				handleImportantInfLog(line)
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			log.Printf("journalctl scanner error: %v", err)
+		}
+
+		_ = cmd.Wait()
+		log.Printf("journalctl exited, restarting follower in 3s...")
+		time.Sleep(3 * time.Second)
+	}
+}
+
 func main() {
+	startDashboardLogWorker()
+	go followJournalctlINF("mediamtx")
 	http.HandleFunc("/service", controlService)
 	http.HandleFunc("/logs", logService)
 	http.ListenAndServe(":8081", nil)

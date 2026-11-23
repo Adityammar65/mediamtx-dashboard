@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Request, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -10,32 +10,7 @@ import jwt
 import httpx
 import secrets
 import json
-import logging
-from collections import deque
 from urllib.parse import urlencode
-
-
-class DashboardLogHandler(logging.Handler):
-    def __init__(self, max_entries=5000):
-        super().__init__()
-        self.records = deque(maxlen=max_entries)
-
-    def emit(self, record):
-        self.records.append({
-            "timestamp": self.formatter.formatTime(record),
-            "level": record.levelname,
-            "message": record.getMessage()
-        })
-
-
-dashboard_log_handler = DashboardLogHandler()
-dashboard_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-dashboard_log_handler.setLevel(logging.INFO)
-
-# Attach to loggers that produce dashboard logs
-for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
-    logging.getLogger(name).addHandler(dashboard_log_handler)
-    logging.getLogger(name).setLevel(logging.INFO)
 
 from config import settings
 from deps import get_mediamtx_client
@@ -43,6 +18,8 @@ from mediamtx_client import MediaMTXClient
 from responses import StandardResponse
 from schemas import PathCreateRequest, PathPatchRequest
 from system_monitor import get_system_monitor
+
+from logger import dashboard_log_handler, agent_logger, AgentLogPayload
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -91,7 +68,9 @@ def decode_access_token(token: str) -> dict:
 
 def is_api_path(path: str) -> bool:
     """Check if path is an API path that requires authentication."""
-    return path.startswith("/api/") and not path.startswith("/api/login")
+    exempt = ["/api/login", "/api/logs/agent-events"]
+    return path.startswith("/api/") and path not in exempt
+
 
 def clean_journalctl_log(raw: str):
     parsed_logs = []
@@ -524,9 +503,26 @@ async def get_system_metrics():
 
 # --- LOGS ROUTES ---
 
+@app.post("/api/logs/agent-events", status_code=status.HTTP_202_ACCEPTED)
+async def receive_agent_log(payload: AgentLogPayload):
+    ts = f" [{payload.timestamp}]" if payload.timestamp else ""
+    src = payload.source or "mediamtx"
+    lvl = (payload.level or "INF").upper()
+
+    formatted_msg = f"[{src}]{ts} {payload.message}"
+
+    if lvl in ("ERR", "ERROR"):
+        agent_logger.error(formatted_msg)
+    elif lvl in ("WRN", "WAR", "WARN", "WARNING"):
+        agent_logger.warning(formatted_msg)
+    else:
+        agent_logger.info(formatted_msg)
+
+    return {"status": "ok"}
+
 @app.get("/api/logs")
 async def read_logs(
-    source: str = Query("mediamtx", regex="^(mediamtx|dashboard)$"),
+    source: str = Query("mediamtx", pattern="^(mediamtx|dashboard)$"),
     lines: int = Query(10, ge=1, le=5000),
     date: str = Query(None),
     level: list[str] = Query(default=[]),
@@ -556,9 +552,11 @@ async def read_logs(
         async with httpx.AsyncClient() as client:
             response = await client.get(target_url, timeout=10.0)
             if response.status_code != 200:
+                data = response.json()
+
                 return JSONResponse(
                     status_code=response.status_code,
-                    content={"success": False, "message": "Gagal mengambil log dari Agent"}
+                    content={"success": False, "message": f"Gagal mengambil log dari Agent {data.get("logs", "")}"}
                 )
             data = response.json()
             agent_data = data.get("logs", "")
