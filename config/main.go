@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os/exec"
+	"time"
 )
 
 type Response struct {
@@ -59,7 +60,18 @@ func logService(w http.ResponseWriter, r *http.Request) {
 		lines = "50"
 	}
 
-	cmd := exec.Command("journalctl", "-u", "mediamtx", "-n", lines, "--no-pager")
+	args := []string{"-u", "mediamtx", "-n", lines, "--no-pager"}
+	date := r.URL.Query().Get("date")
+	if date != "" {
+		if _, err := time.Parse("2006-01-02", date); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"logs": "Format tanggal harus YYYY-MM-DD"})
+			return
+		}
+		args = append(args, "--since", date+" 00:00:00", "--until", date+" 23:59:59")
+	}
+
+	cmd := exec.Command("journalctl", args...)
 	output, err := cmd.Output()
 
 	w.Header().Set("Content-Type", "application/json")

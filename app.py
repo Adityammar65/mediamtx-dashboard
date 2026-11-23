@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import jwt
 import httpx
 import secrets
+from urllib.parse import urlencode
 
 from config import settings
 from deps import get_mediamtx_client
@@ -462,10 +463,23 @@ async def get_system_metrics():
 
 @app.get("/api/logs")
 async def read_logs(
-    lines: int = Query(10, ge=1, le=5000)
+    lines: int = Query(10, ge=1, le=5000),
+    date: str = Query(None),
+    level: list[str] = Query(default=[]),
 ):
+    if date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            raise HTTPException(status_code=400, detail="Format tanggal harus YYYY-MM-DD")
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Tanggal log tidak valid")
+
     base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
-    target_url = f"{base}/logs?lines={lines}"
+    query = [("lines", str(lines))]
+    if date:
+        query.append(("date", date))
+    target_url = f"{base}/logs?{urlencode(query)}"
 
     try:
         async with httpx.AsyncClient() as client:
@@ -478,6 +492,12 @@ async def read_logs(
             data = response.json()
             agent_data= data.get("logs", "")
             cleaned_data = clean_journalctl_log(agent_data)
+            if level:
+                allowed_levels = {item.upper() for item in level}
+                cleaned_data = [
+                    log for log in cleaned_data
+                    if str(log.get("level", "")).upper() in allowed_levels
+                ]
 
             return StandardResponse.success(cleaned_data, "Logs retrieved")
 

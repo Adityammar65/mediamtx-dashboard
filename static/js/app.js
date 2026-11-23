@@ -815,6 +815,11 @@ function bindPageEvents(page) {
             renderLogs(allLogs);
         });
         document.getElementById('logs-refresh')?.addEventListener('click', loadRuntimeLogs);
+        document.getElementById('logs-filter-toggle')?.addEventListener('click', openLogsFilterModal);
+        document.getElementById('logs-filter-close')?.addEventListener('click', closeLogsFilterModal);
+        document.getElementById('logs-filter-cancel')?.addEventListener('click', closeLogsFilterModal);
+        document.getElementById('logs-filter-apply')?.addEventListener('click', applyLogsBackendFilter);
+        document.getElementById('logs-filter-reset')?.addEventListener('click', resetLogsBackendFilter);
     }
     if (page === 'config-paths') {
         document.getElementById('config-paths-add-btn')?.addEventListener('click', () => openConfigPathModal());
@@ -3685,10 +3690,64 @@ async function loadRuntimeRTMP() {
 let allLogs = [];
 let logsCurrentPage = 1;
 const LOGS_PER_PAGE = 40;
+let logsHistoricalMode = false;
+let logsBackendFilter = { date: '', levels: [] };
+
+function openLogsFilterModal() {
+    const modal = document.getElementById('logs-filter-modal');
+    if (!modal) return;
+
+    document.getElementById('logs-filter-date').value = logsBackendFilter.date;
+    document.querySelectorAll('input[name="logs-filter-level"]').forEach(input => {
+        input.checked = logsBackendFilter.levels.includes(input.value);
+    });
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeLogsFilterModal() {
+    const modal = document.getElementById('logs-filter-modal');
+    if (!modal) return;
+    modal.classList.remove('flex');
+    modal.classList.add('hidden');
+}
+
+async function applyLogsBackendFilter() {
+    const date = document.getElementById('logs-filter-date')?.value || '';
+    const levels = Array.from(document.querySelectorAll('input[name="logs-filter-level"]:checked'))
+        .map(input => input.value);
+
+    if (!date && levels.length === 0) {
+        showError('Pilih tanggal atau minimal satu level log');
+        return;
+    }
+
+    logsBackendFilter = { date, levels };
+    logsHistoricalMode = true;
+    closeLogsFilterModal();
+    await loadRuntimeLogs();
+}
+
+async function resetLogsBackendFilter() {
+    logsBackendFilter = { date: '', levels: [] };
+    logsHistoricalMode = false;
+    document.getElementById('logs-filter-date').value = '';
+    document.querySelectorAll('input[name="logs-filter-level"]').forEach(input => {
+        input.checked = false;
+    });
+    closeLogsFilterModal();
+    await loadRuntimeLogs();
+}
 
 async function loadRuntimeLogs() {
     try {
-        const res = await fetchAPI('/logs?lines=500');
+        const params = new URLSearchParams({ lines: '500' });
+        if (logsHistoricalMode) {
+            if (logsBackendFilter.date) params.set('date', logsBackendFilter.date);
+            logsBackendFilter.levels.forEach(level => params.append('level', level));
+        }
+
+        const res = await fetchAPI(`/logs?${params.toString()}`);
         if (res.success) {
             allLogs = res.data || [];
             logsCurrentPage = 1;
@@ -3793,7 +3852,8 @@ function startAutoRefresh() {
             currentPage !== 'config-global'
             && currentPage !== 'config-paths'
             && currentPage !== 'config-defaults'
-            && currentPage !== 'internal-users') {
+            && currentPage !== 'internal-users'
+            && !(currentPage === 'runtime-logs' && logsHistoricalMode)) {
             loadPageData(currentPage);
         }
     }, 5000);
