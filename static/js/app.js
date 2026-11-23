@@ -806,6 +806,7 @@ function bindPageEvents(page) {
         });
     }
     if (page === 'runtime-logs') {
+        updateLogsFilterIcon();
         document.getElementById('logs-search')?.addEventListener('input', () => {
             logsCurrentPage = 1;
             renderLogs(allLogs);
@@ -3693,10 +3694,29 @@ const LOGS_PER_PAGE = 40;
 let logsHistoricalMode = false;
 let logsBackendFilter = { date: '', levels: [] };
 
+function updateLogsFilterIcon() {
+    const button = document.getElementById('logs-filter-toggle');
+    const icon = document.getElementById('logs-filter-icon');
+    if (!button || !icon) return;
+
+    if (logsHistoricalMode) {
+        button.className = 'px-3 py-2 text-sm border border-blue-600 bg-blue-600 text-white rounded-lg shadow-sm transition-colors';
+        icon.setAttribute('fill', 'currentColor');
+        icon.setAttribute('stroke', 'currentColor');
+        button.title = 'Filter backend aktif';
+    } else {
+        button.className = 'px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors';
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        button.title = 'Filter log backend';
+    }
+}
+
 function openLogsFilterModal() {
     const modal = document.getElementById('logs-filter-modal');
     if (!modal) return;
 
+    updateLogsFilterIcon();
     document.getElementById('logs-filter-date').value = logsBackendFilter.date;
     document.querySelectorAll('input[name="logs-filter-level"]').forEach(input => {
         input.checked = logsBackendFilter.levels.includes(input.value);
@@ -3724,6 +3744,7 @@ async function applyLogsBackendFilter() {
 
     logsBackendFilter = { date, levels };
     logsHistoricalMode = true;
+    updateLogsFilterIcon();
     closeLogsFilterModal();
     await loadRuntimeLogs();
 }
@@ -3735,6 +3756,7 @@ async function resetLogsBackendFilter() {
     document.querySelectorAll('input[name="logs-filter-level"]').forEach(input => {
         input.checked = false;
     });
+    updateLogsFilterIcon();
     closeLogsFilterModal();
     await loadRuntimeLogs();
 }

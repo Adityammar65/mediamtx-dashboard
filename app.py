@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import jwt
 import httpx
 import secrets
+import json
 from urllib.parse import urlencode
 
 from config import settings
@@ -69,10 +70,44 @@ def is_api_path(path: str) -> bool:
 
 def clean_journalctl_log(raw: str):
     parsed_logs = []
+    docker_log_pattern = re.compile(
+        r'^(\d{4}-\d{2}-\d{2}T\S+Z?)\s+(.*)$'
+    )
     systemd_line_pattern = re.compile(r'^([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+[^:]+:\s+(.*)$')
     go_log_pattern = re.compile(r'^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+(.*)$')
     for line in raw.splitlines():
         if not line.strip():
+            continue
+
+        stripped = line.strip()
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                parsed_logs.append({
+                    "timestamp": str(data.get("timestamp", "-")),
+                    "level": str(data.get("level", "INF")).upper(),
+                    "message": str(data.get("message", stripped)),
+                })
+                continue
+            except json.JSONDecodeError:
+                pass
+
+        docker_match = docker_log_pattern.match(stripped)
+        if docker_match:
+            timestamp, message = docker_match.groups()
+            level = "INF"
+            upper_message = message.upper()
+            if "[ERR]" in upper_message or "ERROR" in upper_message:
+                level = "ERR"
+            elif "[WAR]" in upper_message or "WARN" in upper_message:
+                level = "WAR"
+            elif "[DBG]" in upper_message or "DEBUG" in upper_message:
+                level = "DEBUG"
+            parsed_logs.append({
+                "timestamp": timestamp,
+                "level": level,
+                "message": message,
+            })
             continue
 
         sys_match = systemd_line_pattern.match(line)

@@ -11,12 +11,14 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       - MEDIAMTX_API_URL=http://mediamtx:9997
+      - MEDIAMTX_AGENT_URL=http://mediamtx-agent:8081
       - LOG_FILE_PATH=/var/log/mediamtx/mediamtx.log
       - NODE_EXPORTER_URL=http://node-exporter:9100
     env_file:
       - .env
     depends_on:
       - mediamtx
+      - mediamtx-agent
       - node-exporter
     restart: unless-stopped
 
@@ -35,6 +37,17 @@ services:
         - ./mediamtx.yml:/mediamtx.yml
         - ./logs:/var/log/mediamtx
         - /etc/localtime:/etc/localtime:ro
+      restart: unless-stopped
+
+  mediamtx-agent:
+      build: ./config
+      container_name: mediamtx_agent
+      ports:
+        - "8081:8081"
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+      depends_on:
+        - mediamtx
       restart: unless-stopped
 
   node-exporter:

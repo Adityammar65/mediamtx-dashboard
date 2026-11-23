@@ -60,7 +60,7 @@ func logService(w http.ResponseWriter, r *http.Request) {
 		lines = "50"
 	}
 
-	args := []string{"-u", "mediamtx", "-n", lines, "--no-pager"}
+	args := []string{"logs", "--tail", lines}
 	date := r.URL.Query().Get("date")
 	if date != "" {
 		if _, err := time.Parse("2006-01-02", date); err != nil {
@@ -70,8 +70,9 @@ func logService(w http.ResponseWriter, r *http.Request) {
 		}
 		args = append(args, "--since", date+" 00:00:00", "--until", date+" 23:59:59")
 	}
+	args = append(args, "mediamtx")
 
-	cmd := exec.Command("journalctl", args...)
+	cmd := exec.Command("docker", args...)
 	output, err := cmd.Output()
 
 	w.Header().Set("Content-Type", "application/json")
