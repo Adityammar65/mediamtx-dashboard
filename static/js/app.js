@@ -818,6 +818,12 @@ function bindPageEvents(page) {
             renderLogs(allLogs);
         });
         document.getElementById('logs-refresh')?.addEventListener('click', loadRuntimeLogs);
+        document.getElementById('logs-source-select')?.addEventListener('change', () => {
+            logsHistoricalMode = false;
+            logsBackendFilter = { date: '', levels: [] };
+            updateLogsFilterIcon();
+            loadRuntimeLogs();
+        });
         document.getElementById('logs-filter-toggle')?.addEventListener('click', openLogsFilterModal);
         document.getElementById('logs-filter-close')?.addEventListener('click', closeLogsFilterModal);
         document.getElementById('logs-filter-cancel')?.addEventListener('click', closeLogsFilterModal);
@@ -3815,8 +3821,9 @@ async function resetLogsBackendFilter() {
 
 async function loadRuntimeLogs() {
     try {
-        const params = new URLSearchParams({ lines: '500' });
-        if (logsHistoricalMode) {
+        const source = document.getElementById('logs-source-select')?.value || 'mediamtx';
+        const params = new URLSearchParams({ lines: '500', source });
+        if (source === 'mediamtx' && logsHistoricalMode) {
             if (logsBackendFilter.date) params.set('date', logsBackendFilter.date);
             logsBackendFilter.levels.forEach(level => params.append('level', level));
         }

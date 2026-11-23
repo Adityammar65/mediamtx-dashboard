@@ -8,7 +8,15 @@
             class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
         >
             <h3 class="text-lg font-medium text-gray-900">Log Entries</h3>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-4 flex-wrap">
+                <select
+                    id="logs-source-select"
+                    class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    title="Log source"
+                >
+                    <option value="mediamtx">MediaMTX</option>
+                    <option value="dashboard">Dashboard</option>
+                </select>
                 <button
                     id="logs-filter-toggle"
                     type="button"
