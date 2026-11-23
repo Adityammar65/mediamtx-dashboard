@@ -272,7 +272,10 @@ async def server_config(client: MediaMTXClient = Depends(get_mediamtx_client)):
 @app.get("/api/server/public-address")
 async def server_public_address():
     return StandardResponse.success(
-        {"host": settings.MEDIAMTX_PUBLIC_HOST.strip()},
+        {
+            "host": settings.MEDIAMTX_PUBLIC_HOST.strip(),
+            "local_host": settings.MEDIAMTX_LOCAL_HOST.strip(),
+        },
         "MediaMTX public address",
     )
 

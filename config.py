@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     MEDIAMTX_API_URL: str = os.environ.get("MEDIAMTX_API_URL","http://mediamtx:9997")
     MEDIAMTX_PUBLIC_HOST: str = os.environ.get("MEDIAMTX_PUBLIC_HOST", "")
+    MEDIAMTX_LOCAL_HOST: str = os.environ.get("MEDIAMTX_LOCAL_HOST", "")
     USE_MOCK: bool = bool(os.environ.get("USE_MOCK", False))
     API_HOST: str = os.environ.get("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.environ.get("API_PORT", 8000))

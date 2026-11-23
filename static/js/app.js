@@ -737,6 +737,8 @@ function bindPageEvents(page) {
         document.getElementById('path-detail-copy-all')?.addEventListener('click', copyAllPathOutputUrls);
         document.getElementById('path-detail-output-username')?.addEventListener('input', updatePathOutputCredentials);
         document.getElementById('path-detail-output-password')?.addEventListener('input', updatePathOutputCredentials);
+        document.getElementById('path-detail-address-local')?.addEventListener('click', () => setPathOutputAddressMode('local'));
+        document.getElementById('path-detail-address-public')?.addEventListener('click', () => setPathOutputAddressMode('public'));
         document.getElementById('path-detail-edit')?.addEventListener('click', () => {
                 if (currentPathName && pathDetailState?.configAvailable) window.editPath(currentPathName);
         });
@@ -1254,6 +1256,14 @@ async function loadPathDetail(pathName) {
         mediaMtxPublicHost: publicAddressResult.status === 'fulfilled' && publicAddressResult.value.success
             ? publicAddressResult.value.data.host
             : '',
+        mediaMtxLocalHost: publicAddressResult.status === 'fulfilled' && publicAddressResult.value.success
+            ? (publicAddressResult.value.data.local_host || window.location.hostname)
+            : window.location.hostname,
+        outputAddressMode: publicAddressResult.status === 'fulfilled'
+            && publicAddressResult.value.success
+            && publicAddressResult.value.data.host
+            ? 'public'
+            : 'local',
         outputCredentials: { username: '', password: '' },
         outputUrls: [],
     };
@@ -1415,10 +1425,13 @@ function getPathOutputUrls(serverConfig, pathName, publicHost, credentials = {})
 
 function renderPathDetail() {
     if (!pathDetailState) return;
-    const { name, config, configAvailable, runtime, serverConfig, mediaMtxPublicHost } = pathDetailState;
+    const { name, config, configAvailable, runtime, serverConfig } = pathDetailState;
     const status = getPathRuntimeStatus(runtime, configAvailable, pathDetailState.runtimeAvailable);
     const source = getPathSource(config, runtime);
-    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, pathDetailState.outputCredentials);
+    const selectedHost = pathDetailState.outputAddressMode === 'public'
+        ? pathDetailState.mediaMtxPublicHost
+        : pathDetailState.mediaMtxLocalHost;
+    const outputs = getPathOutputUrls(serverConfig, name, selectedHost, pathDetailState.outputCredentials);
     pathDetailState.outputUrls = outputs;
 
     document.getElementById('path-detail-summary-name').textContent = name;
@@ -1443,6 +1456,7 @@ function renderPathDetail() {
         ? ''
         : 'No specific path configuration is available to delete.';
     document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
+    updatePathAddressButtons();
     renderPathOutputRows(outputs);
 }
 
@@ -1452,11 +1466,49 @@ function updatePathOutputCredentials() {
         username: document.getElementById('path-detail-output-username').value,
         password: document.getElementById('path-detail-output-password').value,
     };
-    const { serverConfig, name, mediaMtxPublicHost, outputCredentials } = pathDetailState;
-    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, outputCredentials);
+    const { serverConfig, name, outputCredentials } = pathDetailState;
+    const selectedHost = pathDetailState.outputAddressMode === 'public'
+        ? pathDetailState.mediaMtxPublicHost
+        : pathDetailState.mediaMtxLocalHost;
+    const outputs = getPathOutputUrls(serverConfig, name, selectedHost, outputCredentials);
     pathDetailState.outputUrls = outputs;
     document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
     renderPathOutputRows(outputs);
+}
+
+function updatePathAddressButtons() {
+    if (!pathDetailState) return;
+    const localButton = document.getElementById('path-detail-address-local');
+    const publicButton = document.getElementById('path-detail-address-public');
+    const note = document.getElementById('path-detail-address-note');
+    if (!localButton || !publicButton || !note) return;
+
+    const activeClasses = ['bg-blue-600', 'text-white'];
+    const inactiveClasses = ['text-gray-700', 'hover:bg-gray-100'];
+    [localButton, publicButton].forEach(button => {
+        button.classList.remove(...activeClasses, ...inactiveClasses);
+        button.classList.add(...inactiveClasses);
+    });
+    const activeButton = pathDetailState.outputAddressMode === 'public' ? publicButton : localButton;
+    activeButton.classList.remove(...inactiveClasses);
+    activeButton.classList.add(...activeClasses);
+
+    const localHost = pathDetailState.mediaMtxLocalHost || window.location.hostname;
+    const publicHost = pathDetailState.mediaMtxPublicHost;
+    publicButton.disabled = !publicHost;
+    publicButton.className = publicHost
+        ? publicButton.className
+        : `${publicButton.className} cursor-not-allowed opacity-50`;
+    note.textContent = pathDetailState.outputAddressMode === 'public'
+        ? `Menggunakan IP publik: ${publicHost || '-'}`
+        : `Menggunakan IP lokal: ${localHost || '-'}`;
+}
+
+function setPathOutputAddressMode(mode) {
+    if (!pathDetailState || (mode !== 'local' && mode !== 'public')) return;
+    if (mode === 'public' && !pathDetailState.mediaMtxPublicHost) return;
+    pathDetailState.outputAddressMode = mode;
+    renderPathDetail();
 }
 
 function renderPathOutputRows(outputs) {
