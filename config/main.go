@@ -28,6 +28,9 @@ var ignoredInfPatterns = []string{
 	"libsw",
 	"libpostproc",
 	"speed=",
+	"conn ",
+	"session ",
+	"muxer ",
 }
 
 type AgentLogPayload struct {

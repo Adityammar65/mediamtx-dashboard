@@ -751,12 +751,7 @@ function bindPageEvents(page) {
         });
         document.getElementById('path-detail-video')?.addEventListener('error', event => {
             if (!event.currentTarget.currentSrc) return;
-            const webRtc = pathDetailState?.outputUrls.find(output => output.label === 'WebRTC');
-            if (webRtc) {
-                openPathWebRtcPreview(webRtc);
-            } else {
                 setPathPreviewMessage('The HLS stream could not be loaded. Check stream readiness and network access.');
-            }
         });
     }
     if (page === 'config-global') {
@@ -1229,7 +1224,7 @@ async function loadPathDetail(pathName) {
     if (!runtimeAvailable && !configAvailable) {
         contentEl.classList.add('hidden');
         errorEl.textContent = runtimeResult.status === 'rejected'
-            ? `Unable to load runtime path: ${runtimeResult.reason.message}`
+            ? `Unable to load runtime path. It can be the path's is not exists: ${runtimeResult.reason.message}`
             : configResult.status === 'rejected'
                 ? `Unable to load path configuration: ${configResult.reason.message}`
                 : runtimeResult.value.message || 'MediaMTX did not return this path.';
@@ -1704,7 +1699,6 @@ function copyAllPathOutputUrls() {
 
 function setPathPreviewMessage(message) {
     const video = document.getElementById('path-detail-video');
-    const webRtcFrame = document.getElementById('path-detail-webrtc');
     if (pathHlsPlayer) {
         pathHlsPlayer.destroy();
         pathHlsPlayer = null;
@@ -1713,39 +1707,45 @@ function setPathPreviewMessage(message) {
     video.removeAttribute('src');
     video.load();
     video.classList.add('hidden');
-    webRtcFrame.src = 'about:blank';
-    webRtcFrame.classList.add('hidden');
     document.getElementById('path-detail-preview-empty').classList.remove('hidden');
     document.getElementById('path-detail-preview-status').textContent = message;
     document.getElementById('path-detail-live').classList.add('hidden');
 }
 
-function openPathWebRtcPreview(output) {
-    const video = document.getElementById('path-detail-video');
-    const webRtcFrame = document.getElementById('path-detail-webrtc');
-    if (pathHlsPlayer) {
-        pathHlsPlayer.destroy();
-        pathHlsPlayer = null;
+async function waitForHlsPlaylistReady(url, { timeoutMs = 12000, intervalMs = 500 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        try {
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (resp.ok) {
+                const playlistText = await resp.text();
+                const hasSegment = playlistText
+                    .split(/\r?\n/)
+                    .some(line => {
+                        const trimmed = line.trim();
+                        return trimmed && !trimmed.startsWith('#');
+                    });
+
+                if (hasSegment) {
+                    return true;
+                }
+            }
+        } catch (_err) {
+            // Abaikan error sementara saat stream/proxy baru mulai aktif
+        }
+
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-    video.classList.add('hidden');
-    document.getElementById('path-detail-preview-empty').classList.add('hidden');
-    webRtcFrame.src = output.url;
-    webRtcFrame.classList.remove('hidden');
-    document.getElementById('path-detail-preview-status').textContent =
-        'Opening the MediaMTX WebRTC player. Playback status is shown by the embedded player.';
-    document.getElementById('path-detail-live').classList.add('hidden');
+
+    return false;
 }
 
 async function testPathPreview() {
     document.getElementById('path-detail-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
     const hls = pathDetailState?.outputUrls.find(output => output.label === 'HLS');
-    const webRtc = pathDetailState?.outputUrls.find(output => output.label === 'WebRTC');
 
     const video = document.getElementById('path-detail-video');
-    const webRtcFrame = document.getElementById('path-detail-webrtc');
     if (pathHlsPlayer) {
         pathHlsPlayer.destroy();
         pathHlsPlayer = null;
@@ -1754,39 +1754,43 @@ async function testPathPreview() {
     video.removeAttribute('src');
     video.load();
     video.classList.add('hidden');
-    webRtcFrame.src = 'about:blank';
-    webRtcFrame.classList.add('hidden');
     document.getElementById('path-detail-live').classList.add('hidden');
+
     const nativeHls = Boolean(video.canPlayType('application/vnd.apple.mpegurl'));
     const hlsJsAvailable = Boolean(window.Hls && window.Hls.isSupported());
 
     if (!hls || (!nativeHls && !hlsJsAvailable)) {
-        if (webRtc) {
-            openPathWebRtcPreview(webRtc);
-            return;
-        }
         setPathPreviewMessage(hls
             ? 'This browser has no supported HLS player. RTSP/RTMP cannot be played directly in a browser video element.'
-            : 'Preview unavailable: HLS and WebRTC are not enabled or their listener addresses are not configured.');
+            : 'Preview unavailable: HLS is not enabled or its listener address is not configured.');
         return;
     }
 
-    document.getElementById('path-detail-preview-status').textContent = 'Loading HLS stream...';
+    const statusEl = document.getElementById('path-detail-preview-status');
+    statusEl.textContent = 'Warming up & waiting for HLS stream...';
     document.getElementById('path-detail-preview-empty').classList.add('hidden');
 
-    if (pathDetailState && pathDetailState.name) {
-        try {
-            const encodedUrl = encodeURIComponent(hls.url);
-            await fetchAPI(`/streaming/${pathDetailState.name}?url=${encodedUrl}`, { method: 'GET' });
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        } catch (err) {
-            console.warn('Gagal memicu warm-up stream:', err);
-        }
+    if (!pathDetailState || !pathDetailState.name) {
+        setPathPreviewMessage('Stream path name is missing.');
+        return;
     }
 
+    const proxyHlsUrl = `/api/streaming/${pathDetailState.name}/index.m3u8`;
+    const isReady = await waitForHlsPlaylistReady(proxyHlsUrl, {
+        timeoutMs: 12000,
+        intervalMs: 500,
+    });
+
+    if (!isReady) {
+        setPathPreviewMessage('HLS stream did not become ready in time.');
+        return;
+    }
+
+    statusEl.textContent = 'Loading HLS stream...';
     video.classList.remove('hidden');
+
     if (nativeHls) {
-        video.src = hls.url;
+        video.src = proxyHlsUrl;
         video.load();
         try {
             await video.play();
@@ -1796,24 +1800,48 @@ async function testPathPreview() {
         return;
     }
 
-    pathHlsPlayer = new window.Hls();
-    pathHlsPlayer.loadSource(hls.url);
+    let networkRetries = 0;
+    let mediaRetries = 0;
+    const maxRetries = 3;
+
+    pathHlsPlayer = new window.Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+    });
+    pathHlsPlayer.loadSource(proxyHlsUrl);
     pathHlsPlayer.attachMedia(video);
+
     pathHlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, async () => {
+        statusEl.textContent = '';
         try {
             await video.play();
         } catch (error) {
             setPathPreviewMessage(`Unable to start playback: ${error.message}`);
         }
     });
+
     pathHlsPlayer.on(window.Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-            if (webRtc) {
-                openPathWebRtcPreview(webRtc);
-            } else {
-                setPathPreviewMessage('The HLS player could not load this stream. Check stream readiness and network access.');
-            }
+        if (!data.fatal) {
+            return;
         }
+
+        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < maxRetries) {
+            networkRetries += 1;
+            setTimeout(() => {
+                if (pathHlsPlayer) {
+                    pathHlsPlayer.startLoad();
+                }
+            }, 600);
+            return;
+        }
+
+        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < maxRetries) {
+            mediaRetries += 1;
+            pathHlsPlayer.recoverMediaError();
+            return;
+        }
+
+        setPathPreviewMessage('The HLS player could not load this stream. Check stream readiness and network access.');
     });
 }
 

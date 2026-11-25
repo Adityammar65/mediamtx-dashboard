@@ -431,6 +431,7 @@ class MediaMTXClient:
     async def update_internal_user(self, username: str, user: str, password: str | None, permissions: list[dict], ips: list[str] | None = None):
         current_id = await self._resolve_user_id(username)
         if not current_id:
+            logger.error(f"Internal user {username!r} not found during update")
             raise HTTPException(404, f"Internal user {username!r} not found; user list refreshed")
         existing = (await self.list_internal_users()).get("items", [])
         previous = next((item for item in existing if item.get("id") == current_id), None)
@@ -452,9 +453,11 @@ class MediaMTXClient:
             if r.status_code == 404 and attempt == 0:
                 current_id = await self._resolve_user_id(username)
                 if not current_id:
+                    logger.error(f"Internal user {username!r} no longer exists during update")
                     raise HTTPException(404, f"Internal user {username!r} no longer exists; user list refreshed")
                 continue
             if r.status_code == 404:
+                logger.error(f"Internal user {username!r} changed during update")
                 raise HTTPException(404, f"Internal user {username!r} changed during update; user list refreshed")
             r.raise_for_status()
             break
@@ -465,18 +468,19 @@ class MediaMTXClient:
         await self._queue_save_to_json({"users": MediaMTXClient._ram_internal_users})
         current_id = await self._resolve_user_id(username)
         if not current_id:
+            logger.error(f"Internal user {username!r} not found during delete")
             raise HTTPException(404, f"Internal user {username!r} not found; user list refreshed")
-        existing = (await self.list_internal_users()).get("items", [])
-        previous = next((item for item in existing if item.get("id") == current_id), None)
 
         for attempt in range(2):
             r = await self.client.delete(f"{self.base_url}/config/internal-users/delete/{current_id}")
             if r.status_code == 404 and attempt == 0:
                 current_id = await self._resolve_user_id(username)
                 if not current_id:
+                    logger.error(f"Internal user {username!r} no longer exists during delete")
                     raise HTTPException(404, f"Internal user {username!r} no longer exists; user list refreshed")
                 continue
             if r.status_code == 404:
+                logger.error(f"Internal user {username!r} changed during delete")
                 raise HTTPException(404, f"Internal user {username!r} changed during delete; user list refreshed")
             r.raise_for_status()
             break
@@ -621,6 +625,7 @@ class MediaMTXClient:
             json=mapped,
         )
         if r.status_code == 404:
+            logger.error(f"Path not found during update: {name}")
             raise HTTPException(404, "Path not found")
         r.raise_for_status()
         return r.json()
@@ -629,6 +634,7 @@ class MediaMTXClient:
         await self._queue_save_to_yaml({}, delete_path=name)
         r = await self.client.delete(f"{self.base_url}/config/paths/delete/{quote(name, safe='')}")
         if r.status_code == 404:
+            logger.error(f"Path not found during delete: {name}")
             raise HTTPException(404, "Path not found")
         r.raise_for_status()
 
@@ -1005,7 +1011,100 @@ class MediaMTXClient:
         except httpx.HTTPError:
             return ""
 
-    # --- Logs ---
+    async def proxy_hls(self, path: str, request_headers: dict = None):
+        import posixpath
+        from urllib.parse import urlparse
 
-    async def read_log_file(self, path, lines=100):
-        return {"lines": [], "error": "Log reading not implemented in MediaMTX API"}
+        ip = settings.MEDIAMTX_LOCAL_HOST
+        hls_base = f"http://{ip}:8888/"
+
+        if path.startswith(("http://", "https://")):
+            parsed_in = urlparse(path)
+            clean_path = parsed_in.path.lstrip("/")
+            query_in = f"?{parsed_in.query}" if parsed_in.query else ""
+        elif "?" in path:
+            raw_p, raw_q = path.split("?", 1)
+            clean_path = raw_p.lstrip("/")
+            query_in = f"?{raw_q}" if raw_q else ""
+        else:
+            clean_path = path.lstrip("/")
+            query_in = ""
+
+        target_url = f"{hls_base}{clean_path}{query_in}"
+
+        if not getattr(self, "_hls_client", None):
+            timeout = httpx.Timeout(15.0, connect=3.0)
+            self._hls_client = httpx.AsyncClient(follow_redirects=True, timeout=timeout)
+
+        # Build proxy headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        if request_headers:
+            for key in ["authorization", "cookie", "referer"]:
+                if val := request_headers.get(key):
+                    headers[key] = val
+
+        resp = await self._hls_client.get(target_url, headers=headers)
+        content_type = resp.headers.get("content-type", "application/octet-stream")
+        content = resp.content
+
+        if resp.status_code != 200:
+            logger.error(
+                    "PROXY request failed: url=%s status=%s body=%s",
+                    target_url,
+                    resp.status_code,
+                    resp.text[:500],
+                )
+
+        if resp.status_code == 200 and (
+            clean_path.endswith(".m3u8") or "mpegurl" in content_type.lower()
+        ):
+
+            try:
+                text = content.decode("utf-8", errors="replace")
+                rewritten_lines = []
+                base_dir = posixpath.dirname(clean_path)
+
+                lines = text.splitlines()
+                skip_gap_segment = False
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped == "#EXT-X-GAP":
+                        # GAP segments are intentionally unavailable in MediaMTX.
+                        skip_gap_segment = True
+                        continue
+                    if skip_gap_segment:
+                        if stripped.startswith("#EXTINF:"):
+                            continue
+                        if stripped and not stripped.startswith("#"):
+                            skip_gap_segment = False
+                            continue
+                        if not stripped:
+                            continue
+                    if not stripped or stripped.startswith("#"):
+                        rewritten_lines.append(line)
+                        continue
+
+                    parsed_item = urlparse(stripped)
+
+                    item_query = parsed_item.query
+                    final_query = f"?{item_query}" if item_query else ""
+
+                    item_path = parsed_item.path
+                    if item_path.startswith("/"):
+                        final_path = item_path.lstrip("/")
+                    elif item_path.startswith("http"):
+                        rewritten_lines.append(stripped)
+                        continue
+                    else:
+                        final_path = posixpath.join(base_dir, item_path)
+
+                    norm_path = posixpath.normpath(final_path).lstrip("/")
+                    rewritten_lines.append(f"/api/streaming/{norm_path}{final_query}")
+
+                content = "\n".join(rewritten_lines).encode("utf-8")
+            except Exception as e:
+                logger.error(f"Error saat rewrite m3u8: {e}")
+
+        return content, content_type, resp.status_code

@@ -488,6 +488,36 @@ async def rtmp_sessions(client: MediaMTXClient = Depends(get_mediamtx_client)):
     return StandardResponse.success(data, "RTMP sessions listed")
 
 
+@app.get("/api/streaming/{name:path}")
+async def streaming_preview(name: str, request: Request):
+    from mediamtx_client import logger
+
+    query_str = str(request.url.query)
+    full_path = f"{name}?{query_str}" if query_str else name
+
+    try:
+        client = MediaMTXClient.get_instance()
+        content, media_type, status_code = await client.proxy_hls(full_path)
+        if status_code != 200:
+            raise HTTPException(
+                status_code=status_code,
+                detail=f"Failed to fetch stream (status {status_code})",
+            )
+
+        return Response(
+            content=content,
+            media_type=media_type,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Unhandled error pada streaming_preview untuk '{full_path}'")
+        raise HTTPException(
+            status_code=500,
+            detail=repr(exc) or "Internal stream proxy error",
+        )
+
+
 @app.get("/api/metrics")
 async def get_metrics(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_metrics()

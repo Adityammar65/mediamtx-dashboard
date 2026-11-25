@@ -95,6 +95,28 @@ class SystemMonitor:
 
         return labels
 
+    @staticmethod
+    def compute_cpu_count(metrics: dict) -> Optional[int]:
+        """Count unique logical CPUs exposed by node_cpu_seconds_total."""
+        cpu_data = metrics.get("node_cpu_seconds_total", [])
+        if not cpu_data:
+            return None
+
+        logical_cpus = {
+            entry["labels"].get("cpu")
+            for entry in cpu_data
+            if entry["labels"].get("cpu") not in (None, "")
+        }
+        return len(logical_cpus) if logical_cpus else None
+
+    @staticmethod
+    def compute_running_threads(metrics: dict) -> Optional[int]:
+        """Return runnable kernel threads/processes if exposed by Node Exporter."""
+        entries = metrics.get("node_procs_running", [])
+        if not entries:
+            return None
+        return int(entries[0]["value"])
+
     def parse_metrics(self, raw: str) -> dict:
         """Parse Prometheus text exposition format into metric samples."""
         metrics = {}
@@ -250,7 +272,13 @@ class SystemMonitor:
             "available": False,
             "error": error,
             "last_update": last_update,
-            "cpu": {"usage": None, "history": [], "error": error},
+            "cpu": {
+                "usage": None,
+                "logical_cpus": None,
+                "running_threads": None,
+                "history": [],
+                "error": error,
+            },
             "memory": {"usage": None, "total": None, "available": None, "history": [], "error": error},
             "disk": {"usage": None, "total": None, "free": None, "history": [], "error": error},
             "network": {"rx_rate": None, "tx_rate": None, "rx_history": [], "tx_history": [], "error": error},
@@ -267,13 +295,21 @@ class SystemMonitor:
         mem_usage, mem_total, mem_available, mem_history, mem_error = self.compute_memory_usage(metrics)
         disk_usage, disk_total, disk_available, disk_history, disk_error = self.compute_disk_usage(metrics)
         rx_rate, tx_rate, rx_history, tx_history, network_error = self.compute_network_rates(metrics)
+        logical_cpus = self.compute_cpu_count(metrics)
+        running_threads = self.compute_running_threads(metrics)
 
         self._last_fetch_time = time.time()
         return {
             "available": True,
             "error": None,
             "last_update": self._last_fetch_time,
-            "cpu": {"usage": cpu_usage, "history": cpu_history, "error": cpu_error},
+            "cpu": {
+                "usage": cpu_usage,
+                "logical_cpus": logical_cpus,
+                "running_threads": running_threads,
+                "history": cpu_history,
+                "error": cpu_error,
+            },
             "memory": {"usage": mem_usage, "total": mem_total, "available": mem_available, "history": mem_history, "error": mem_error},
             "disk": {"usage": disk_usage, "total": disk_total, "free": disk_available, "history": disk_history, "error": disk_error},
             "network": {"rx_rate": rx_rate, "tx_rate": tx_rate, "rx_history": rx_history, "tx_history": tx_history, "error": network_error},
