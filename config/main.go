@@ -139,7 +139,10 @@ func sendLogToDashboard(payload AgentLogPayload) error {
 		return fmt.Errorf("marshal payload error: %w", err)
 	}
 
-	url := "http://172.16.18.210:8000/api/logs/agent-events"
+	url := os.Getenv("DASHBOARD_MEDIAMTX_URL")
+	if url == "" {
+		url = "http://172.16.18.210:8000/api/logs/agent-events"
+	}
 
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
