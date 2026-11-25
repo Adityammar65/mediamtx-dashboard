@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, ClassVar
 import os
+import ipaddress
 
 
 class Settings(BaseSettings):
@@ -25,5 +26,13 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = int(os.environ.get("JWT_EXPIRE_MINUTES", 480))
     JWT_SECURE_COOKIE: bool = bool(os.environ.get("JWT_SECURE_COOKIE", False))
 
+
+    ALLOWED_LOCAL_IPS: ClassVar[tuple[ipaddress._BaseNetwork, ...]] = (
+        ipaddress.ip_network("127.0.0.0/8"),     # IPv4 loopback
+        ipaddress.ip_network("::1/128"),         # IPv6 loopback
+        ipaddress.ip_network("10.0.0.0/8"),      # Private network
+        ipaddress.ip_network("172.16.0.0/12"),   # Private network
+        ipaddress.ip_network("192.168.0.0/16"),  # LAN / jaringan lokal umum
+    )
 
 settings = Settings()

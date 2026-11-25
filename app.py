@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import re
+import ipaddress
 import asyncio
 from datetime import datetime, timedelta
 import jwt
@@ -46,6 +47,30 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+def require_local_ip(request: Request):
+    client_host = request.client.host if request.client else None
+    if not client_host:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client IP could not be determined",
+        )
+
+    try:
+        ip_obj = ipaddress.ip_address(client_host)
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+            ip_obj = ip_obj.ipv4_mapped
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid client IP address",
+        )
+
+    if not any(ip_obj in net for net in settings.ALLOWED_LOCAL_IPS):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to allowed local IP addresses",
+        )
 
 def create_access_token(data: dict):
     """Create a JWT access token."""
@@ -533,7 +558,7 @@ async def get_system_metrics():
 
 # --- LOGS ROUTES ---
 
-@app.post("/api/logs/agent-events", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/api/logs/agent-events", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_local_ip)])
 async def receive_agent_log(payload: AgentLogPayload):
     ts = f" [{payload.timestamp}]" if payload.timestamp else ""
     src = payload.source or "mediamtx"
