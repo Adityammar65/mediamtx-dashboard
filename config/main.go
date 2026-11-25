@@ -31,6 +31,7 @@ var ignoredInfPatterns = []string{
 	"conn ",
 	"session ",
 	"muxer ",
+	"is available and online",
 }
 
 type AgentLogPayload struct {

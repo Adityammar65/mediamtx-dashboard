@@ -8,6 +8,8 @@ let currentRoute = '';
 let sidebarCollapsed = false;
 let pathHlsPlayer = null;
 let authRedirecting = false;
+let pathOnline = true;
+let dataList = {online:[], offline:[]};
 
 // --- Utility Functions ---
 
@@ -714,6 +716,42 @@ function bindPageEvents(page) {
                 window.location.hash = `#path-detail/${encodeURIComponent(name)}`;
             }
         });
+
+        const labelStream = document.getElementById('label-stream');
+        const onlineCard = document.getElementById('online-card');
+        const offlineCard = document.getElementById('offline-card');
+
+        const ACTIVE_CLASSES = [
+            'bg-white', 'rounded-lg', 'border', 'border-2', 'border-gray-600', 'bg-gray-50/20', 'p-6'
+        ];
+
+        const INACTIVE_CLASSES = [
+            'bg-white', 'rounded-lg', 'border',
+          'border-gray-200', 'p-6'
+        ];
+
+        function toggleCardState(card, isActive) {
+          if (!card) return;
+
+          card.classList.remove(...(isActive ? INACTIVE_CLASSES : ACTIVE_CLASSES));
+          card.classList.add(...(isActive ? ACTIVE_CLASSES : INACTIVE_CLASSES));
+        }
+
+        function selectStreamMode(isOnline) {
+          pathOnline = isOnline;
+
+          if (labelStream) {
+            labelStream.textContent = isOnline ? 'Online Streams' : 'Offline Streams';
+          }
+          toggleCardState(onlineCard, isOnline);
+          toggleCardState(offlineCard, !isOnline);
+          renderPaths(dataList);
+        }
+        onlineCard?.addEventListener('click', () => selectStreamMode(true));
+        offlineCard?.addEventListener('click', () => selectStreamMode(false));
+
+        selectStreamMode(Boolean(pathOnline));
+
     }
     if (page === 'streams') {
         document.getElementById('streams-table-body')?.addEventListener('click', event => {
@@ -901,15 +939,16 @@ function formatUptimeFromStart(started) {
 async function loadDashboard() {
     let anySuccess = false;
 
-
     fetchSystemMetrics();
-
 
     try {
         const summary = await fetchAPI('/streams/summary');
         if (summary.success) {
             renderSummary(summary.data);
-            renderPaths(summary.data.online_lists);
+            dataList.online = summary.data.online_lists;
+            dataList.offline = summary.data.offline_lists;
+
+            renderPaths(dataList);
             anySuccess = true;
         } else {
             renderSummaryError();
@@ -1006,8 +1045,12 @@ function renderServerStatus(health) {
     document.getElementById('server-uptime').textContent = formatUptimeFromStart(health.started);
 }
 
-function renderPaths(paths) {
+function renderPaths(lists) {
     const tbody = document.getElementById('paths-table-body');
+    let paths = pathOnline ? lists.online : lists.offline;
+    const headTabelAkhir = document.getElementById("last-head-table");
+
+    headTabelAkhir.textContent = pathOnline ? "Action" : "confName"
 
     if (paths.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-500">No paths found</td></tr>';
@@ -1020,11 +1063,11 @@ function renderPaths(paths) {
         <tr class="hover:bg-gray-50">
             <td class="px-6 py-4 font-mono text-sm">${escapeHtml(p.name)}</td>
             <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(trackInfo)}</td>
-            <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(p.source.type)}</td>
+            <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(p.source?.type)}</td>
             <td class="px-6 py-4 text-sm font-mono">${formatBytes(p.bytesReceived)}</td>
             <td class="px-6 py-4 text-sm font-mono">${formatBytes(p.bytesSent)}</td>
-            <td class="px-6 py-4 text-sm">
-                <button class="btn-icon btn-primary" data-path-action="detail" data-path-name="${escapeHtml(p.name)}">Detail</button>
+            <td class="px-6 py-4 text-sm text-gray-700">
+                ${pathOnline ? `<button class="btn-icon btn-primary" data-path-action="detail" data-path-name="${escapeHtml(p.name)}">Detail</button>` : `${escapeHtml(p.confName || '-')}`}
             </td>
         </tr>
     `}).join('');
@@ -1712,35 +1755,6 @@ function setPathPreviewMessage(message) {
     document.getElementById('path-detail-live').classList.add('hidden');
 }
 
-async function waitForHlsPlaylistReady(url, { timeoutMs = 12000, intervalMs = 500 } = {}) {
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-        try {
-            const resp = await fetch(url, { cache: 'no-store' });
-            if (resp.ok) {
-                const playlistText = await resp.text();
-                const hasSegment = playlistText
-                    .split(/\r?\n/)
-                    .some(line => {
-                        const trimmed = line.trim();
-                        return trimmed && !trimmed.startsWith('#');
-                    });
-
-                if (hasSegment) {
-                    return true;
-                }
-            }
-        } catch (_err) {
-            // Abaikan error sementara saat stream/proxy baru mulai aktif
-        }
-
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
-    }
-
-    return false;
-}
-
 async function testPathPreview() {
     document.getElementById('path-detail-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
     const hls = pathDetailState?.outputUrls.find(output => output.label === 'HLS');
@@ -1770,27 +1784,21 @@ async function testPathPreview() {
     statusEl.textContent = 'Warming up & waiting for HLS stream...';
     document.getElementById('path-detail-preview-empty').classList.add('hidden');
 
-    if (!pathDetailState || !pathDetailState.name) {
-        setPathPreviewMessage('Stream path name is missing.');
-        return;
-    }
-
-    const proxyHlsUrl = `/api/streaming/${pathDetailState.name}/index.m3u8`;
-    const isReady = await waitForHlsPlaylistReady(proxyHlsUrl, {
-        timeoutMs: 12000,
-        intervalMs: 500,
-    });
-
-    if (!isReady) {
-        setPathPreviewMessage('HLS stream did not become ready in time.');
-        return;
+    if (pathDetailState && pathDetailState.name) {
+        try {
+            const encodedUrl = encodeURIComponent(hls.url);
+            await fetchAPI(`/streaming/${pathDetailState.name}?url=${encodedUrl}`, { method: 'GET' });
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (err) {
+            console.warn('Gagal memicu warm-up stream:', err);
+        }
     }
 
     statusEl.textContent = 'Loading HLS stream...';
     video.classList.remove('hidden');
 
     if (nativeHls) {
-        video.src = proxyHlsUrl;
+        video.src = hls.url;
         video.load();
         try {
             await video.play();
@@ -1804,11 +1812,8 @@ async function testPathPreview() {
     let mediaRetries = 0;
     const maxRetries = 3;
 
-    pathHlsPlayer = new window.Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-    });
-    pathHlsPlayer.loadSource(proxyHlsUrl);
+    pathHlsPlayer = new window.Hls();
+    pathHlsPlayer.loadSource(hls.url);
     pathHlsPlayer.attachMedia(video);
 
     pathHlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, async () => {
@@ -1829,7 +1834,7 @@ async function testPathPreview() {
             networkRetries += 1;
             setTimeout(() => {
                 if (pathHlsPlayer) {
-                    pathHlsPlayer.startLoad();
+                    pathHlsPlayer.startLoad();                    
                 }
             }, 600);
             return;

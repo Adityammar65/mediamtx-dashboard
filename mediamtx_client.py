@@ -765,6 +765,8 @@ class MediaMTXClient:
 
         online = sum(1 for s in items if s.get("ready"))
         list_online = [s for s in items if s.get("ready")]
+        list_offline = [s for s in items if s.get("ready") is False]
+
         return {
             "total": len(items),
             "online": online,
@@ -772,7 +774,8 @@ class MediaMTXClient:
             "total_readers": sum(safe_int(s.get("readers")) for s in items),
             "total_bytes_received": sum(s.get("bytesReceived", 0) for s in items),
             "total_bytes_sent": sum(s.get("bytesSent", 0) for s in items),
-            "online_lists": list_online
+            "online_lists": list_online,
+            "offline_lists": list_offline
         }
 
     async def get_stream_detail(self, name):

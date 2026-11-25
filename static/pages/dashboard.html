@@ -186,14 +186,14 @@
                 -
             </p>
         </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-6">
-            <h3 class="text-sm font-medium text-gray-500">Online</h3>
+        <div id="online-card" class="bg-white rounded-lg border border-gray-200 p-6 cursor-pointer transition">
+            <h3 class="text-sm font-medium text-gray-500">Online (klik untuk lihat semua)</h3>
             <p id="stat-online" class="text-3xl font-bold text-green-600 mt-1">
                 -
             </p>
         </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-6">
-            <h3 class="text-sm font-medium text-gray-500">Offline</h3>
+        <div id="offline-card" class="bg-white rounded-lg border border-gray-200 p-6 cursor-pointer transition">
+            <h3 class="text-sm font-medium text-gray-500">Offline (klik untuk lihat semua)</h3></span>
             <p id="stat-offline" class="text-3xl font-bold text-red-600 mt-1">
                 -
             </p>
@@ -213,7 +213,7 @@
     <div
         class="px-6 py-4 border-b border-gray-200 flex items-center justify-between"
     >
-        <h3 class="text-lg font-medium text-gray-900">Online Streams</h3>
+        <h3 id="label-stream" class="text-lg font-medium text-gray-900">Online Streams</h3>
         <span id="online-count" class="text-sm text-gray-500"
             >0 Online</span
         >
@@ -247,7 +247,7 @@
                     >
                         Traffic Out
                     </th>
-                    <th
+                    <th id="last-head-table"
                         class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >
                         Action
