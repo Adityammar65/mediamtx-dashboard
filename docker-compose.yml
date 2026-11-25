@@ -9,10 +9,6 @@ services:
       - .:/app
       - ./logs:/var/log/mediamtx
       - /etc/localtime:/etc/localtime:ro
-    environment:
-      - MEDIAMTX_API_URL=http://mediamtx:9997
-      - LOG_FILE_PATH=/var/log/mediamtx/mediamtx.log
-      - NODE_EXPORTER_URL=http://node-exporter:9100
     env_file:
       - .env
     depends_on:

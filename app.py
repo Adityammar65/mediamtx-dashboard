@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, Response, Request, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 import jwt
 import httpx
 import secrets
+import json
+from urllib.parse import urlencode
 
 from config import settings
 from deps import get_mediamtx_client
@@ -16,6 +18,8 @@ from mediamtx_client import MediaMTXClient
 from responses import StandardResponse
 from schemas import PathCreateRequest, PathPatchRequest
 from system_monitor import get_system_monitor
+
+from logger import dashboard_log_handler, agent_logger, AgentLogPayload
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -64,14 +68,50 @@ def decode_access_token(token: str) -> dict:
 
 def is_api_path(path: str) -> bool:
     """Check if path is an API path that requires authentication."""
-    return path.startswith("/api/") and not path.startswith("/api/login")
+    exempt = ["/api/login", "/api/logs/agent-events"]
+    return path.startswith("/api/") and path not in exempt
+
 
 def clean_journalctl_log(raw: str):
     parsed_logs = []
+    docker_log_pattern = re.compile(
+        r'^(\d{4}-\d{2}-\d{2}T\S+Z?)\s+(.*)$'
+    )
     systemd_line_pattern = re.compile(r'^([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+[^:]+:\s+(.*)$')
     go_log_pattern = re.compile(r'^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+(.*)$')
     for line in raw.splitlines():
         if not line.strip():
+            continue
+
+        stripped = line.strip()
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                parsed_logs.append({
+                    "timestamp": str(data.get("timestamp", "-")),
+                    "level": str(data.get("level", "INF")).upper(),
+                    "message": str(data.get("message", stripped)),
+                })
+                continue
+            except json.JSONDecodeError:
+                pass
+
+        docker_match = docker_log_pattern.match(stripped)
+        if docker_match:
+            timestamp, message = docker_match.groups()
+            level = "INF"
+            upper_message = message.upper()
+            if "[ERR]" in upper_message or "ERROR" in upper_message:
+                level = "ERR"
+            elif "[WAR]" in upper_message or "WARN" in upper_message:
+                level = "WAR"
+            elif "[DBG]" in upper_message or "DEBUG" in upper_message:
+                level = "DEBUG"
+            parsed_logs.append({
+                "timestamp": timestamp,
+                "level": level,
+                "message": message,
+            })
             continue
 
         sys_match = systemd_line_pattern.match(line)
@@ -236,7 +276,10 @@ async def server_config(client: MediaMTXClient = Depends(get_mediamtx_client)):
 @app.get("/api/server/public-address")
 async def server_public_address():
     return StandardResponse.success(
-        {"host": settings.MEDIAMTX_PUBLIC_HOST.strip()},
+        {
+            "host": settings.MEDIAMTX_PUBLIC_HOST.strip(),
+            "local_host": settings.MEDIAMTX_LOCAL_HOST.strip(),
+        },
         "MediaMTX public address",
     )
 
@@ -445,6 +488,36 @@ async def rtmp_sessions(client: MediaMTXClient = Depends(get_mediamtx_client)):
     return StandardResponse.success(data, "RTMP sessions listed")
 
 
+@app.get("/api/streaming/{name:path}")
+async def streaming_preview(name: str, request: Request):
+    from mediamtx_client import logger
+
+    query_str = str(request.url.query)
+    full_path = f"{name}?{query_str}" if query_str else name
+
+    try:
+        client = MediaMTXClient.get_instance()
+        content, media_type, status_code = await client.proxy_hls(full_path)
+        if status_code != 200:
+            raise HTTPException(
+                status_code=status_code,
+                detail=f"Failed to fetch stream (status {status_code})",
+            )
+
+        return Response(
+            content=content,
+            media_type=media_type,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Unhandled error pada streaming_preview untuk '{full_path}'")
+        raise HTTPException(
+            status_code=500,
+            detail=repr(exc) or "Internal stream proxy error",
+        )
+
+
 @app.get("/api/metrics")
 async def get_metrics(client: MediaMTXClient = Depends(get_mediamtx_client)):
     data = await client.get_metrics()
@@ -460,24 +533,70 @@ async def get_system_metrics():
 
 # --- LOGS ROUTES ---
 
+@app.post("/api/logs/agent-events", status_code=status.HTTP_202_ACCEPTED)
+async def receive_agent_log(payload: AgentLogPayload):
+    ts = f" [{payload.timestamp}]" if payload.timestamp else ""
+    src = payload.source or "mediamtx"
+    lvl = (payload.level or "INF").upper()
+
+    formatted_msg = f"[{src}]{ts} {payload.message}"
+
+    if lvl in ("ERR", "ERROR"):
+        agent_logger.error(formatted_msg)
+    elif lvl in ("WRN", "WAR", "WARN", "WARNING"):
+        agent_logger.warning(formatted_msg)
+    else:
+        agent_logger.info(formatted_msg)
+
+    return {"status": "ok"}
+
 @app.get("/api/logs")
 async def read_logs(
-    lines: int = Query(10, ge=1, le=5000)
+    source: str = Query("mediamtx", pattern="^(mediamtx|dashboard)$"),
+    lines: int = Query(10, ge=1, le=5000),
+    date: str = Query(None),
+    level: list[str] = Query(default=[]),
 ):
+    if source == "dashboard":
+        cleaned_data = list(dashboard_log_handler.records)[-lines:]
+        if level:
+            allowed = {item.upper() for item in level}
+            cleaned_data = [log for log in cleaned_data if log["level"].upper() in allowed]
+        return StandardResponse.success(cleaned_data, "Dashboard logs retrieved")
+
+    if date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            raise HTTPException(status_code=400, detail="Format tanggal harus YYYY-MM-DD")
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Tanggal log tidak valid")
+
     base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
-    target_url = f"{base}/logs?lines={lines}"
+    query = [("lines", str(lines))]
+    if date:
+        query.append(("date", date))
+    target_url = f"{base}/logs?{urlencode(query)}"
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(target_url, timeout=10.0)
             if response.status_code != 200:
+                data = response.json()
+
                 return JSONResponse(
                     status_code=response.status_code,
-                    content={"success": False, "message": "Gagal mengambil log dari Agent"}
+                    content={"success": False, "message": f"Gagal mengambil log dari Agent {data.get("logs", "")}"}
                 )
             data = response.json()
-            agent_data= data.get("logs", "")
+            agent_data = data.get("logs", "")
             cleaned_data = clean_journalctl_log(agent_data)
+            if level:
+                allowed_levels = {item.upper() for item in level}
+                cleaned_data = [
+                    log for log in cleaned_data
+                    if str(log.get("level", "")).upper() in allowed_levels
+                ]
 
             return StandardResponse.success(cleaned_data, "Logs retrieved")
 

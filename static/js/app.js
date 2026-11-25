@@ -737,6 +737,8 @@ function bindPageEvents(page) {
         document.getElementById('path-detail-copy-all')?.addEventListener('click', copyAllPathOutputUrls);
         document.getElementById('path-detail-output-username')?.addEventListener('input', updatePathOutputCredentials);
         document.getElementById('path-detail-output-password')?.addEventListener('input', updatePathOutputCredentials);
+        document.getElementById('path-detail-address-local')?.addEventListener('click', () => setPathOutputAddressMode('local'));
+        document.getElementById('path-detail-address-public')?.addEventListener('click', () => setPathOutputAddressMode('public'));
         document.getElementById('path-detail-edit')?.addEventListener('click', () => {
                 if (currentPathName && pathDetailState?.configAvailable) window.editPath(currentPathName);
         });
@@ -749,12 +751,7 @@ function bindPageEvents(page) {
         });
         document.getElementById('path-detail-video')?.addEventListener('error', event => {
             if (!event.currentTarget.currentSrc) return;
-            const webRtc = pathDetailState?.outputUrls.find(output => output.label === 'WebRTC');
-            if (webRtc) {
-                openPathWebRtcPreview(webRtc);
-            } else {
                 setPathPreviewMessage('The HLS stream could not be loaded. Check stream readiness and network access.');
-            }
         });
     }
     if (page === 'config-global') {
@@ -806,6 +803,7 @@ function bindPageEvents(page) {
         });
     }
     if (page === 'runtime-logs') {
+        updateLogsFilterIcon();
         document.getElementById('logs-search')?.addEventListener('input', () => {
             logsCurrentPage = 1;
             renderLogs(allLogs);
@@ -815,6 +813,17 @@ function bindPageEvents(page) {
             renderLogs(allLogs);
         });
         document.getElementById('logs-refresh')?.addEventListener('click', loadRuntimeLogs);
+        document.getElementById('logs-source-select')?.addEventListener('change', () => {
+            logsHistoricalMode = false;
+            logsBackendFilter = { date: '', levels: [] };
+            updateLogsFilterIcon();
+            loadRuntimeLogs();
+        });
+        document.getElementById('logs-filter-toggle')?.addEventListener('click', openLogsFilterModal);
+        document.getElementById('logs-filter-close')?.addEventListener('click', closeLogsFilterModal);
+        document.getElementById('logs-filter-cancel')?.addEventListener('click', closeLogsFilterModal);
+        document.getElementById('logs-filter-apply')?.addEventListener('click', applyLogsBackendFilter);
+        document.getElementById('logs-filter-reset')?.addEventListener('click', resetLogsBackendFilter);
     }
     if (page === 'config-paths') {
         document.getElementById('config-paths-add-btn')?.addEventListener('click', () => openConfigPathModal());
@@ -1215,7 +1224,7 @@ async function loadPathDetail(pathName) {
     if (!runtimeAvailable && !configAvailable) {
         contentEl.classList.add('hidden');
         errorEl.textContent = runtimeResult.status === 'rejected'
-            ? `Unable to load runtime path: ${runtimeResult.reason.message}`
+            ? `Unable to load runtime path. It can be the path's is not exists: ${runtimeResult.reason.message}`
             : configResult.status === 'rejected'
                 ? `Unable to load path configuration: ${configResult.reason.message}`
                 : runtimeResult.value.message || 'MediaMTX did not return this path.';
@@ -1248,6 +1257,14 @@ async function loadPathDetail(pathName) {
         mediaMtxPublicHost: publicAddressResult.status === 'fulfilled' && publicAddressResult.value.success
             ? publicAddressResult.value.data.host
             : '',
+        mediaMtxLocalHost: publicAddressResult.status === 'fulfilled' && publicAddressResult.value.success
+            ? (publicAddressResult.value.data.local_host || window.location.hostname)
+            : window.location.hostname,
+        outputAddressMode: publicAddressResult.status === 'fulfilled'
+            && publicAddressResult.value.success
+            && publicAddressResult.value.data.host
+            ? 'public'
+            : 'local',
         outputCredentials: { username: '', password: '' },
         outputUrls: [],
     };
@@ -1409,10 +1426,13 @@ function getPathOutputUrls(serverConfig, pathName, publicHost, credentials = {})
 
 function renderPathDetail() {
     if (!pathDetailState) return;
-    const { name, config, configAvailable, runtime, serverConfig, mediaMtxPublicHost } = pathDetailState;
+    const { name, config, configAvailable, runtime, serverConfig } = pathDetailState;
     const status = getPathRuntimeStatus(runtime, configAvailable, pathDetailState.runtimeAvailable);
     const source = getPathSource(config, runtime);
-    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, pathDetailState.outputCredentials);
+    const selectedHost = pathDetailState.outputAddressMode === 'public'
+        ? pathDetailState.mediaMtxPublicHost
+        : pathDetailState.mediaMtxLocalHost;
+    const outputs = getPathOutputUrls(serverConfig, name, selectedHost, pathDetailState.outputCredentials);
     pathDetailState.outputUrls = outputs;
 
     document.getElementById('path-detail-summary-name').textContent = name;
@@ -1437,6 +1457,7 @@ function renderPathDetail() {
         ? ''
         : 'No specific path configuration is available to delete.';
     document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
+    updatePathAddressButtons();
     renderPathOutputRows(outputs);
 }
 
@@ -1446,11 +1467,49 @@ function updatePathOutputCredentials() {
         username: document.getElementById('path-detail-output-username').value,
         password: document.getElementById('path-detail-output-password').value,
     };
-    const { serverConfig, name, mediaMtxPublicHost, outputCredentials } = pathDetailState;
-    const outputs = getPathOutputUrls(serverConfig, name, mediaMtxPublicHost, outputCredentials);
+    const { serverConfig, name, outputCredentials } = pathDetailState;
+    const selectedHost = pathDetailState.outputAddressMode === 'public'
+        ? pathDetailState.mediaMtxPublicHost
+        : pathDetailState.mediaMtxLocalHost;
+    const outputs = getPathOutputUrls(serverConfig, name, selectedHost, outputCredentials);
     pathDetailState.outputUrls = outputs;
     document.getElementById('path-detail-copy-all').disabled = outputs.length === 0;
     renderPathOutputRows(outputs);
+}
+
+function updatePathAddressButtons() {
+    if (!pathDetailState) return;
+    const localButton = document.getElementById('path-detail-address-local');
+    const publicButton = document.getElementById('path-detail-address-public');
+    const note = document.getElementById('path-detail-address-note');
+    if (!localButton || !publicButton || !note) return;
+
+    const activeClasses = ['bg-blue-600', 'text-white'];
+    const inactiveClasses = ['text-gray-700', 'hover:bg-gray-100'];
+    [localButton, publicButton].forEach(button => {
+        button.classList.remove(...activeClasses, ...inactiveClasses);
+        button.classList.add(...inactiveClasses);
+    });
+    const activeButton = pathDetailState.outputAddressMode === 'public' ? publicButton : localButton;
+    activeButton.classList.remove(...inactiveClasses);
+    activeButton.classList.add(...activeClasses);
+
+    const localHost = pathDetailState.mediaMtxLocalHost || window.location.hostname;
+    const publicHost = pathDetailState.mediaMtxPublicHost;
+    publicButton.disabled = !publicHost;
+    publicButton.className = publicHost
+        ? publicButton.className
+        : `${publicButton.className} cursor-not-allowed opacity-50`;
+    note.textContent = pathDetailState.outputAddressMode === 'public'
+        ? `Menggunakan IP publik: ${publicHost || '-'}`
+        : `Menggunakan IP lokal: ${localHost || '-'}`;
+}
+
+function setPathOutputAddressMode(mode) {
+    if (!pathDetailState || (mode !== 'local' && mode !== 'public')) return;
+    if (mode === 'public' && !pathDetailState.mediaMtxPublicHost) return;
+    pathDetailState.outputAddressMode = mode;
+    renderPathDetail();
 }
 
 function renderPathOutputRows(outputs) {
@@ -1640,7 +1699,6 @@ function copyAllPathOutputUrls() {
 
 function setPathPreviewMessage(message) {
     const video = document.getElementById('path-detail-video');
-    const webRtcFrame = document.getElementById('path-detail-webrtc');
     if (pathHlsPlayer) {
         pathHlsPlayer.destroy();
         pathHlsPlayer = null;
@@ -1649,39 +1707,45 @@ function setPathPreviewMessage(message) {
     video.removeAttribute('src');
     video.load();
     video.classList.add('hidden');
-    webRtcFrame.src = 'about:blank';
-    webRtcFrame.classList.add('hidden');
     document.getElementById('path-detail-preview-empty').classList.remove('hidden');
     document.getElementById('path-detail-preview-status').textContent = message;
     document.getElementById('path-detail-live').classList.add('hidden');
 }
 
-function openPathWebRtcPreview(output) {
-    const video = document.getElementById('path-detail-video');
-    const webRtcFrame = document.getElementById('path-detail-webrtc');
-    if (pathHlsPlayer) {
-        pathHlsPlayer.destroy();
-        pathHlsPlayer = null;
+async function waitForHlsPlaylistReady(url, { timeoutMs = 12000, intervalMs = 500 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        try {
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (resp.ok) {
+                const playlistText = await resp.text();
+                const hasSegment = playlistText
+                    .split(/\r?\n/)
+                    .some(line => {
+                        const trimmed = line.trim();
+                        return trimmed && !trimmed.startsWith('#');
+                    });
+
+                if (hasSegment) {
+                    return true;
+                }
+            }
+        } catch (_err) {
+            // Abaikan error sementara saat stream/proxy baru mulai aktif
+        }
+
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-    video.classList.add('hidden');
-    document.getElementById('path-detail-preview-empty').classList.add('hidden');
-    webRtcFrame.src = output.url;
-    webRtcFrame.classList.remove('hidden');
-    document.getElementById('path-detail-preview-status').textContent =
-        'Opening the MediaMTX WebRTC player. Playback status is shown by the embedded player.';
-    document.getElementById('path-detail-live').classList.add('hidden');
+
+    return false;
 }
 
 async function testPathPreview() {
     document.getElementById('path-detail-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
     const hls = pathDetailState?.outputUrls.find(output => output.label === 'HLS');
-    const webRtc = pathDetailState?.outputUrls.find(output => output.label === 'WebRTC');
 
     const video = document.getElementById('path-detail-video');
-    const webRtcFrame = document.getElementById('path-detail-webrtc');
     if (pathHlsPlayer) {
         pathHlsPlayer.destroy();
         pathHlsPlayer = null;
@@ -1690,39 +1754,43 @@ async function testPathPreview() {
     video.removeAttribute('src');
     video.load();
     video.classList.add('hidden');
-    webRtcFrame.src = 'about:blank';
-    webRtcFrame.classList.add('hidden');
     document.getElementById('path-detail-live').classList.add('hidden');
+
     const nativeHls = Boolean(video.canPlayType('application/vnd.apple.mpegurl'));
     const hlsJsAvailable = Boolean(window.Hls && window.Hls.isSupported());
 
     if (!hls || (!nativeHls && !hlsJsAvailable)) {
-        if (webRtc) {
-            openPathWebRtcPreview(webRtc);
-            return;
-        }
         setPathPreviewMessage(hls
             ? 'This browser has no supported HLS player. RTSP/RTMP cannot be played directly in a browser video element.'
-            : 'Preview unavailable: HLS and WebRTC are not enabled or their listener addresses are not configured.');
+            : 'Preview unavailable: HLS is not enabled or its listener address is not configured.');
         return;
     }
 
-    document.getElementById('path-detail-preview-status').textContent = 'Loading HLS stream...';
+    const statusEl = document.getElementById('path-detail-preview-status');
+    statusEl.textContent = 'Warming up & waiting for HLS stream...';
     document.getElementById('path-detail-preview-empty').classList.add('hidden');
 
-    if (pathDetailState && pathDetailState.name) {
-        try {
-            const encodedUrl = encodeURIComponent(hls.url);
-            await fetchAPI(`/streaming/${pathDetailState.name}?url=${encodedUrl}`, { method: 'GET' });
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        } catch (err) {
-            console.warn('Gagal memicu warm-up stream:', err);
-        }
+    if (!pathDetailState || !pathDetailState.name) {
+        setPathPreviewMessage('Stream path name is missing.');
+        return;
     }
 
+    const proxyHlsUrl = `/api/streaming/${pathDetailState.name}/index.m3u8`;
+    const isReady = await waitForHlsPlaylistReady(proxyHlsUrl, {
+        timeoutMs: 12000,
+        intervalMs: 500,
+    });
+
+    if (!isReady) {
+        setPathPreviewMessage('HLS stream did not become ready in time.');
+        return;
+    }
+
+    statusEl.textContent = 'Loading HLS stream...';
     video.classList.remove('hidden');
+
     if (nativeHls) {
-        video.src = hls.url;
+        video.src = proxyHlsUrl;
         video.load();
         try {
             await video.play();
@@ -1732,24 +1800,48 @@ async function testPathPreview() {
         return;
     }
 
-    pathHlsPlayer = new window.Hls();
-    pathHlsPlayer.loadSource(hls.url);
+    let networkRetries = 0;
+    let mediaRetries = 0;
+    const maxRetries = 3;
+
+    pathHlsPlayer = new window.Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+    });
+    pathHlsPlayer.loadSource(proxyHlsUrl);
     pathHlsPlayer.attachMedia(video);
+
     pathHlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, async () => {
+        statusEl.textContent = '';
         try {
             await video.play();
         } catch (error) {
             setPathPreviewMessage(`Unable to start playback: ${error.message}`);
         }
     });
+
     pathHlsPlayer.on(window.Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-            if (webRtc) {
-                openPathWebRtcPreview(webRtc);
-            } else {
-                setPathPreviewMessage('The HLS player could not load this stream. Check stream readiness and network access.');
-            }
+        if (!data.fatal) {
+            return;
         }
+
+        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < maxRetries) {
+            networkRetries += 1;
+            setTimeout(() => {
+                if (pathHlsPlayer) {
+                    pathHlsPlayer.startLoad();
+                }
+            }, 600);
+            return;
+        }
+
+        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < maxRetries) {
+            mediaRetries += 1;
+            pathHlsPlayer.recoverMediaError();
+            return;
+        }
+
+        setPathPreviewMessage('The HLS player could not load this stream. Check stream readiness and network access.');
     });
 }
 
@@ -2545,6 +2637,11 @@ form?.addEventListener('submit', async (e) => {
     const fallback = fd.get('fallback');
     if (fallback) payload.fallback = fallback;
 
+    const submitBtn = document.getElementById('path-submit-btn');
+    submitBtn.disabled = true;
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = 'Processing...';
+
     try {
         const isEditing = editingPathName || editingConfigPathName;
         const editingName = editingPathName || editingConfigPathName;
@@ -2590,6 +2687,9 @@ form?.addEventListener('submit', async (e) => {
         showError(e.message);
         const isEditing = editingPathName || editingConfigPathName;
         alert(`Failed to ${isEditing ? 'update' : 'add'} path: ${e.message}`);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
     }
 });
 
@@ -3685,10 +3785,86 @@ async function loadRuntimeRTMP() {
 let allLogs = [];
 let logsCurrentPage = 1;
 const LOGS_PER_PAGE = 40;
+let logsHistoricalMode = false;
+let logsBackendFilter = { date: '', levels: [] };
+
+function updateLogsFilterIcon() {
+    const button = document.getElementById('logs-filter-toggle');
+    const icon = document.getElementById('logs-filter-icon');
+    if (!button || !icon) return;
+
+    if (logsHistoricalMode) {
+        button.className = 'px-3 py-2 text-sm border border-blue-600 bg-blue-600 text-white rounded-lg shadow-sm transition-colors';
+        icon.setAttribute('fill', 'currentColor');
+        icon.setAttribute('stroke', 'currentColor');
+        button.title = 'Filter backend aktif';
+    } else {
+        button.className = 'px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors';
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        button.title = 'Filter log backend';
+    }
+}
+
+function openLogsFilterModal() {
+    const modal = document.getElementById('logs-filter-modal');
+    if (!modal) return;
+
+    updateLogsFilterIcon();
+    document.getElementById('logs-filter-date').value = logsBackendFilter.date;
+    document.querySelectorAll('input[name="logs-filter-level"]').forEach(input => {
+        input.checked = logsBackendFilter.levels.includes(input.value);
+    });
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeLogsFilterModal() {
+    const modal = document.getElementById('logs-filter-modal');
+    if (!modal) return;
+    modal.classList.remove('flex');
+    modal.classList.add('hidden');
+}
+
+async function applyLogsBackendFilter() {
+    const date = document.getElementById('logs-filter-date')?.value || '';
+    const levels = Array.from(document.querySelectorAll('input[name="logs-filter-level"]:checked'))
+        .map(input => input.value);
+
+    if (!date && levels.length === 0) {
+        showError('Pilih tanggal atau minimal satu level log');
+        return;
+    }
+
+    logsBackendFilter = { date, levels };
+    logsHistoricalMode = true;
+    updateLogsFilterIcon();
+    closeLogsFilterModal();
+    await loadRuntimeLogs();
+}
+
+async function resetLogsBackendFilter() {
+    logsBackendFilter = { date: '', levels: [] };
+    logsHistoricalMode = false;
+    document.getElementById('logs-filter-date').value = '';
+    document.querySelectorAll('input[name="logs-filter-level"]').forEach(input => {
+        input.checked = false;
+    });
+    updateLogsFilterIcon();
+    closeLogsFilterModal();
+    await loadRuntimeLogs();
+}
 
 async function loadRuntimeLogs() {
     try {
-        const res = await fetchAPI('/logs?lines=500');
+        const source = document.getElementById('logs-source-select')?.value || 'mediamtx';
+        const params = new URLSearchParams({ lines: '500', source });
+        if (source === 'mediamtx' && logsHistoricalMode) {
+            if (logsBackendFilter.date) params.set('date', logsBackendFilter.date);
+            logsBackendFilter.levels.forEach(level => params.append('level', level));
+        }
+
+        const res = await fetchAPI(`/logs?${params.toString()}`);
         if (res.success) {
             allLogs = res.data || [];
             logsCurrentPage = 1;
@@ -3705,7 +3881,10 @@ function renderLogs(logs) {
     const searchTerm = document.getElementById('logs-search')?.value.toLowerCase() || '';
     const levelFilter = document.getElementById('logs-level-filter')?.value || '';
 
-    const filtered = logs.filter(log => {
+    // Balik urutan agar yang terbaru di atas
+    const reversedLogs = [...logs].reverse();
+
+    const filtered = reversedLogs.filter(log => {
         const message = (log.message || '').toLowerCase();
         const level = (log.level || '').toUpperCase();
         const matchesSearch = !searchTerm || message.includes(searchTerm);
@@ -3731,16 +3910,16 @@ function renderLogs(logs) {
     tbody.innerHTML = pageLogs.map(log => {
         const level = (log.level || '').toUpperCase();
         let levelClass = 'text-gray-600';
-        if (level === 'ERR') levelClass = 'text-red-600';
-        else if (level === 'WAR') levelClass = 'text-yellow-600';
-        else if (level === 'INF') levelClass = 'text-blue-600';
+        if (level === 'ERR' || level === 'ERROR') levelClass = 'text-red-600';
+        else if (level === 'WAR' || level === 'WARNING' || level === 'WARN') levelClass = 'text-yellow-600';
+        else if (level === 'INF' || level === 'INFO') levelClass = 'text-blue-600';
         else if (level === 'DEBUG') levelClass = 'text-gray-500';
 
         return `
             <tr class="hover:bg-gray-50">
-                <td class="px-6 py-3 text-gray-500 whitespace-nowrap">${escapeHtml(log.timestamp || '-')}</td>
-                <td class="px-6 py-3"><span class="font-medium ${levelClass}">${escapeHtml(level)}</span></td>
-                <td class="px-6 py-3 text-gray-900 max-w-2xl truncate block">${escapeHtml(log.message || '-')}</td>
+                <td class="px-6 py-2 text-gray-500 whitespace-nowrap text-xs font-mono">${escapeHtml(log.timestamp || '-')}</td>
+                <td class="px-6 py-2"><span class="font-medium ${levelClass} text-xs uppercase">${escapeHtml(level)}</span></td>
+                <td class="px-6 py-2 text-gray-900 font-mono text-xs whitespace-pre-wrap">${escapeHtml(log.message || '-')}</td>
             </tr>
         `;
     }).join('');
@@ -3793,7 +3972,8 @@ function startAutoRefresh() {
             currentPage !== 'config-global'
             && currentPage !== 'config-paths'
             && currentPage !== 'config-defaults'
-            && currentPage !== 'internal-users') {
+            && currentPage !== 'internal-users'
+            && !(currentPage === 'runtime-logs' && logsHistoricalMode)) {
             loadPageData(currentPage);
         }
     }, 5000);
