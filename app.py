@@ -96,14 +96,25 @@ def is_api_path(path: str) -> bool:
     exempt = ["/api/login", "/api/logs/agent-events"]
     return path.startswith("/api/") and path not in exempt
 
+def _detect_level(text: str, default: str = "INF") -> str:
+    upper = text.upper()
+    if " ERR " in f" {upper} " or "[ERR]" in upper or "ERROR" in upper:
+        return "ERR"
+    if " WRN " in f" {upper} " or " WAR " in f" {upper} " or "[WRN]" in upper or "[WAR]" in upper or "WARN" in upper:
+        return "WAR"
+    if " DBG " in f" {upper} " or "[DBG]" in upper or "DEBUG" in upper:
+        return "DEBUG"
+    if " INF " in f" {upper} " or "[INF]" in upper:
+        return "INF"
+    return default
+
 
 def clean_journalctl_log(raw: str):
     parsed_logs = []
-    docker_log_pattern = re.compile(
-        r'^(\d{4}-\d{2}-\d{2}T\S+Z?)\s+(.*)$'
-    )
+    docker_log_pattern = re.compile(r'^(\d{4}-\d{2}-\d{2}T\S+Z?)\s+(.*)$')
     systemd_line_pattern = re.compile(r'^([A-Za-z]{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+[^:]+:\s+(.*)$')
     go_log_pattern = re.compile(r'^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+(.*)$')
+
     for line in raw.splitlines():
         if not line.strip():
             continue
@@ -124,17 +135,9 @@ def clean_journalctl_log(raw: str):
         docker_match = docker_log_pattern.match(stripped)
         if docker_match:
             timestamp, message = docker_match.groups()
-            level = "INF"
-            upper_message = message.upper()
-            if "[ERR]" in upper_message or "ERROR" in upper_message:
-                level = "ERR"
-            elif "[WAR]" in upper_message or "WARN" in upper_message:
-                level = "WAR"
-            elif "[DBG]" in upper_message or "DEBUG" in upper_message:
-                level = "DEBUG"
             parsed_logs.append({
                 "timestamp": timestamp,
-                "level": level,
+                "level": _detect_level(message, default="INF"),
                 "message": message,
             })
             continue
@@ -148,20 +151,20 @@ def clean_journalctl_log(raw: str):
                 ts, level, msg = go_match.groups()
                 parsed_logs.append({
                     "timestamp": ts,
-                    "level": level,
-                    "message": msg
+                    "level": level.upper(),
+                    "message": msg,
                 })
             else:
                 parsed_logs.append({
                     "timestamp": sys_timestamp,
-                    "level": "INF",
-                    "message": inner_content
+                    "level": _detect_level(inner_content, default="INF"),
+                    "message": inner_content,
                 })
         else:
             parsed_logs.append({
                 "timestamp": "-",
-                "level": "INF",
-                "message": line.strip()
+                "level": _detect_level(stripped, default="INF"),
+                "message": stripped,
             })
 
     return parsed_logs
@@ -561,15 +564,18 @@ async def get_system_metrics():
 @app.post("/api/logs/agent-events", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_local_ip)])
 async def receive_agent_log(payload: AgentLogPayload):
     ts = f" [{payload.timestamp}]" if payload.timestamp else ""
-    src = payload.source or "mediamtx"
-    lvl = (payload.level or "INF").upper()
+    src = (payload.source or "mediamtx").strip()
+    lvl = (payload.level or "INF").strip().upper()
+    msg = (payload.message or "").strip()
 
-    formatted_msg = f"[{src}]{ts} {payload.message}"
+    formatted_msg = f"[{src}]{ts} {msg}"
 
     if lvl in ("ERR", "ERROR"):
         agent_logger.error(formatted_msg)
     elif lvl in ("WRN", "WAR", "WARN", "WARNING"):
         agent_logger.warning(formatted_msg)
+    elif lvl in ("DBG", "DEBUG"):
+        agent_logger.debug(formatted_msg)
     else:
         agent_logger.info(formatted_msg)
 
@@ -611,7 +617,7 @@ async def read_logs(
 
                 return JSONResponse(
                     status_code=response.status_code,
-                    content={"success": False, "message": f"Gagal mengambil log dari Agent {data.get("logs", "")}"}
+                    content={"success": False, "message": f"Gagal mengambil log dari Agent {data.get('logs', '')}"}
                 )
             data = response.json()
             agent_data = data.get("logs", "")
