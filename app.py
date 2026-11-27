@@ -604,30 +604,36 @@ async def read_logs(
             raise HTTPException(status_code=400, detail="Tanggal log tidak valid")
 
     base = str(settings.MEDIAMTX_AGENT_URL).rstrip("/")
-    query = [("lines", str(lines))]
+    query = []
     if date:
         query.append(("date", date))
+    else:
+        query.append(("lines", str(lines)))
+
+    for lvl in level:
+        if lvl.strip():
+            query.append(("level", lvl.strip()))
+
     target_url = f"{base}/logs?{urlencode(query)}"
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(target_url, timeout=10.0)
+            response = await client.get(target_url, timeout=30.0)
             if response.status_code != 200:
-                data = response.json()
+                try:
+                    err_data = response.json()
+                    err_logs = err_data.get("logs", "") if isinstance(err_data, dict) else response.text
+                except ValueError:
+                    err_logs = response.text
 
                 return JSONResponse(
                     status_code=response.status_code,
-                    content={"success": False, "message": f"Gagal mengambil log dari Agent {data.get('logs', '')}"}
+                    content={"success": False, "message": f"Gagal mengambil log dari Agent {err_logs}"},
                 )
+
             data = response.json()
             agent_data = data.get("logs", "")
             cleaned_data = clean_journalctl_log(agent_data)
-            if level:
-                allowed_levels = {item.upper() for item in level}
-                cleaned_data = [
-                    log for log in cleaned_data
-                    if str(log.get("level", "")).upper() in allowed_levels
-                ]
 
             return StandardResponse.success(cleaned_data, "Logs retrieved")
 

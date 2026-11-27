@@ -11,6 +11,7 @@ import (
 	"os"
 	"fmt"
 	"time"
+	"strconv"
 )
 
 type Response struct {
@@ -86,21 +87,85 @@ func controlService(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func logService(w http.ResponseWriter, r *http.Request) {
-	lines := r.URL.Query().Get("lines")
-	if lines == "" {
-		lines = "50"
-	}
+func isFFmpegProgressLine(line string) bool {
+	return strings.Contains(line, "frame=") && strings.Contains(line, "fps=")
+}
 
-	args := []string{"-u", "mediamtx", "-n", lines, "--no-pager"}
-	date := r.URL.Query().Get("date")
+func detectLogLevel(line string) string {
+	upper := strings.ToUpper(line)
+	padded := " " + upper + " "
+	switch {
+	case strings.Contains(padded, " ERR ") || strings.Contains(upper, "[ERR]") || strings.Contains(upper, "ERROR"):
+		return "ERR"
+	case strings.Contains(padded, " WRN ") || strings.Contains(padded, " WAR ") || strings.Contains(upper, "[WRN]") || strings.Contains(upper, "[WAR]") || strings.Contains(upper, "WARN"):
+		return "WAR"
+	case strings.Contains(padded, " DBG ") || strings.Contains(upper, "[DBG]") || strings.Contains(upper, "DEBUG"):
+		return "DEBUG"
+	case strings.Contains(padded, " INF ") || strings.Contains(upper, "[INF]"):
+		return "INF"
+	default:
+		return "INF"
+	}
+}
+
+func parseRequestedLevels(r *http.Request) map[string]bool {
+	allowed := make(map[string]bool)
+	for _, rawVal := range r.URL.Query()["level"] {
+		for _, part := range strings.Split(rawVal, ",") {
+			lvl := strings.TrimSpace(strings.ToUpper(part))
+			if lvl == "" {
+				continue
+			}
+			if lvl == "WARNING" || lvl == "WRN" {
+				lvl = "WAR"
+			} else if lvl == "ERROR" {
+				lvl = "ERR"
+			} else if lvl == "DBG" {
+				lvl = "DEBUG"
+			}
+			allowed[lvl] = true
+		}
+	}
+	return allowed
+}
+
+func logService(w http.ResponseWriter, r *http.Request) {
+	allowedLevels := parseRequestedLevels(r)
+	date := strings.TrimSpace(r.URL.Query().Get("date"))
+
+	args := []string{"-u", "mediamtx", "--no-pager"}
+
 	if date != "" {
 		if _, err := time.Parse("2006-01-02", date); err != nil {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"logs": "Format tanggal harus YYYY-MM-DD"})
 			return
 		}
+		// Tanpa -n agar seluruh log dalam 1 hari penuh terambil
 		args = append(args, "--since", date+" 00:00:00", "--until", date+" 23:59:59")
+	} else {
+		// Jika tanpa date, pakai batas lines opsional
+		linesParam := r.URL.Query().Get("lines")
+		limit := 500
+		if linesParam != "" {
+			parsed, err := strconv.Atoi(linesParam)
+			if err != nil || parsed <= 0 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"logs": "Parameter lines harus berupa angka positif"})
+				return
+			}
+			limit = parsed
+		}
+		fetchCount := limit * 10
+		if len(allowedLevels) > 0 {
+			fetchCount = limit * 25
+		}
+		if fetchCount < 200 {
+			fetchCount = 200
+		}
+		args = append(args, "-n", strconv.Itoa(fetchCount))
 	}
 
 	cmd := exec.Command("journalctl", args...)
@@ -113,7 +178,37 @@ func logService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{"logs": string(output)})
+	rawLines := strings.Split(string(output), "\n")
+	filtered := make([]string, 0, len(rawLines))
+	for _, rawLine := range rawLines {
+		trimmed := strings.TrimSpace(rawLine)
+		if trimmed == "" || isFFmpegProgressLine(trimmed) {
+			continue
+		}
+		if len(allowedLevels) > 0 {
+			lvl := detectLogLevel(trimmed)
+			if !allowedLevels[lvl] {
+				continue
+			}
+		}
+		filtered = append(filtered, trimmed)
+	}
+
+	// Jika tanpa date dan memakai limit, ambil bagian paling akhir sesuai limit
+	if date == "" {
+		linesParam := r.URL.Query().Get("lines")
+		limit := 500
+		if linesParam != "" {
+			if parsed, err := strconv.Atoi(linesParam); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+		if len(filtered) > limit {
+			filtered = filtered[len(filtered)-limit:]
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"logs": strings.Join(filtered, "\n")})
 }
 
 func isIgnoredInfLine(line string) bool {
