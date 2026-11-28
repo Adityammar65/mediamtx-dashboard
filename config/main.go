@@ -3,32 +3,34 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"log"
-	"strings"
 	"encoding/json"
-	"net/http"
-	"os/exec"
-	"os"
 	"fmt"
-	"time"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
+	"strings"
+	"time"
 )
 
 type Response struct {
-	Status string `json:"status"`
+	Status  string `json:"status"`
 	Message string `json:"message"`
-	Data string `json:"data"`
+	Data    string `json:"data"`
 }
 
 var ignoredInfPatterns = []string{
 	"frame=",
+	"fps=",
+	"bitrate=",
+	"size=n/a",
 	"built with gcc",
-	"--",
 	"ffmpeg",
 	"libav",
 	"libsw",
 	"libpostproc",
-	"speed=",
 	"conn ",
 	"session ",
 	"muxer ",
@@ -43,7 +45,7 @@ type AgentLogPayload struct {
 }
 
 var dashboardHTTPClient = &http.Client{
-	Timeout: 5 * time.Second,
+	Timeout: 20 * time.Second,
 }
 
 func controlService(w http.ResponseWriter, r *http.Request) {
@@ -129,72 +131,107 @@ func parseRequestedLevels(r *http.Request) map[string]bool {
 	return allowed
 }
 
+func buildJournalctlArgs(date string, useGrep bool) []string {
+	args := []string{"-u", "mediamtx", "--no-pager", "-o", "short"}
+	if useGrep {
+		// Buang baris progres ffmpeg (frame=... fps=...) langsung di journalctl (PCRE2)
+		args = append(args, "--grep", `^(?!.*frame=.*fps=).*`)
+	}
+	if date != "" {
+		args = append(args, "--since", date+" 00:00:00", "--until", date+" 23:59:59")
+	}
+	return args
+}
+
+func runJournalctlFiltered(args []string, allowedLevels map[string]bool, maxLines int) ([]string, error) {
+	cmd := exec.Command("journalctl", args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	reader := bufio.NewReader(stdout)
+	filtered := make([]string, 0, 256)
+
+	for {
+		line, readErr := reader.ReadString('\n')
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !isFFmpegProgressLine(trimmed) {
+			if len(allowedLevels) == 0 || allowedLevels[detectLogLevel(trimmed)] {
+				filtered = append(filtered, trimmed)
+				if maxLines > 0 && len(filtered) > maxLines {
+					// Pertahankan maksimal maxLines baris terakhir agar memori & waktu tetap terjaga
+					filtered = filtered[len(filtered)-maxLines:]
+				}
+			}
+		}
+
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			_ = cmd.Wait()
+			return nil, readErr
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return nil, err
+	}
+
+	return filtered, nil
+}
+
 func logService(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	allowedLevels := parseRequestedLevels(r)
 	date := strings.TrimSpace(r.URL.Query().Get("date"))
 
-	args := []string{"-u", "mediamtx", "--no-pager"}
-
 	if date != "" {
 		if _, err := time.Parse("2006-01-02", date); err != nil {
-			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"logs": "Format tanggal harus YYYY-MM-DD"})
 			return
 		}
-		// Tanpa -n agar seluruh log dalam 1 hari penuh terambil
-		args = append(args, "--since", date+" 00:00:00", "--until", date+" 23:59:59")
 	} else {
-		// Jika tanpa date, pakai batas lines opsional
 		linesParam := r.URL.Query().Get("lines")
-		limit := 500
 		if linesParam != "" {
-			parsed, err := strconv.Atoi(linesParam)
-			if err != nil || parsed <= 0 {
-				w.Header().Set("Content-Type", "application/json")
+			if parsed, err := strconv.Atoi(linesParam); err != nil || parsed <= 0 {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"logs": "Parameter lines harus berupa angka positif"})
 				return
 			}
-			limit = parsed
 		}
-		fetchCount := limit * 10
-		if len(allowedLevels) > 0 {
-			fetchCount = limit * 25
-		}
-		if fetchCount < 200 {
-			fetchCount = 200
-		}
-		args = append(args, "-n", strconv.Itoa(fetchCount))
 	}
 
-	cmd := exec.Command("journalctl", args...)
-	output, err := cmd.Output()
-
-	w.Header().Set("Content-Type", "application/json")
+	// Coba pakai --grep dulu (tanpa batas baris saat date diisi)
+	filtered, err := runJournalctlFiltered(buildJournalctlArgs(date, true), allowedLevels, 0)
+	if err != nil {
+		// Fallback tanpa --grep: pasang batas baris agar tetap cepat
+		fallbackMax := 5000
+		if date == "" {
+			linesParam := r.URL.Query().Get("lines")
+			if linesParam != "" {
+				if parsed, errParse := strconv.Atoi(linesParam); errParse == nil && parsed > 0 {
+					fallbackMax = parsed
+				}
+			} else {
+				fallbackMax = 500
+			}
+		}
+		filtered, err = runJournalctlFiltered(buildJournalctlArgs(date, false), allowedLevels, fallbackMax)
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"logs": "Gagal membaca log: " + err.Error()})
 		return
 	}
 
-	rawLines := strings.Split(string(output), "\n")
-	filtered := make([]string, 0, len(rawLines))
-	for _, rawLine := range rawLines {
-		trimmed := strings.TrimSpace(rawLine)
-		if trimmed == "" || isFFmpegProgressLine(trimmed) {
-			continue
-		}
-		if len(allowedLevels) > 0 {
-			lvl := detectLogLevel(trimmed)
-			if !allowedLevels[lvl] {
-				continue
-			}
-		}
-		filtered = append(filtered, trimmed)
-	}
-
-	// Jika tanpa date dan memakai limit, ambil bagian paling akhir sesuai limit
 	if date == "" {
 		linesParam := r.URL.Query().Get("lines")
 		limit := 500
@@ -214,7 +251,7 @@ func logService(w http.ResponseWriter, r *http.Request) {
 func isIgnoredInfLine(line string) bool {
 	lower := strings.ToLower(line)
 	for _, pat := range ignoredInfPatterns {
-		if strings.Contains(lower, strings.ToLower(pat)) {
+		if strings.Contains(lower, pat) {
 			return true
 		}
 	}
@@ -336,5 +373,8 @@ func main() {
 	go followJournalctlINF("mediamtx")
 	http.HandleFunc("/service", controlService)
 	http.HandleFunc("/logs", logService)
-	http.ListenAndServe(":8081", nil)
+	log.Println("mediamtx-agent listening on :8081")
+	if err := http.ListenAndServe(":8081", nil); err != nil {
+		log.Fatalf("HTTP server error: %v", err)
+	}
 }

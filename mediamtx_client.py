@@ -76,7 +76,14 @@ class MediaMTXClient:
             raise RuntimeError("MediaMTXClient is a singleton, use get_instance()")
         base = str(settings.MEDIAMTX_API_URL).rstrip("/")
         self.base_url = f"{base}/v3"
-        self.client = httpx.AsyncClient(timeout=10.0)
+        auth = None
+        if settings.MEDIAMTX_INTERNAL_USERNAME and settings.MEDIAMTX_INTERNAL_PASSWORD:
+            auth = httpx.BasicAuth(
+                settings.MEDIAMTX_INTERNAL_USERNAME,
+                settings.MEDIAMTX_INTERNAL_PASSWORD,
+            )
+        self._mediamtx_auth = auth
+        self.client = httpx.AsyncClient(timeout=10.0, auth=auth)
         self.yaml_path = self._yaml_path
         if not MediaMTXClient._cache_loaded:
             self._load_initial_cache()
@@ -1048,7 +1055,7 @@ class MediaMTXClient:
                 if val := request_headers.get(key):
                     headers[key] = val
 
-        resp = await self._hls_client.get(target_url, headers=headers)
+        resp = await self._hls_client.get(target_url, headers=headers, auth=self._mediamtx_auth)
         content_type = resp.headers.get("content-type", "application/octet-stream")
         content = resp.content
 
